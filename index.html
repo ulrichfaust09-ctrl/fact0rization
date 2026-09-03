@@ -1,0 +1,2218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>fact0rization</title>
+<style>
+  :root{
+    --grass1:#3f7d3f;
+    --grass2:#4a8c4a;
+    --grid:#00000022;
+    --panel:#1c2420;
+    --panel2:#232e28;
+    --accent:#e8b23d;
+    --accent2:#5cc98a;
+    --text:#eef2ee;
+    --dim:#9fb0a4;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;overflow:hidden;height:100%;background:#111;font-family:'Segoe UI',Roboto,Arial,sans-serif;}
+  #world{display:block;cursor:crosshair;}
+
+  #hud{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;padding:12px;}
+  .chip{pointer-events:auto;background:var(--panel);border:1px solid #ffffff14;border-radius:10px;padding:8px 14px;color:var(--text);font-size:14px;box-shadow:0 4px 14px #0006;}
+  .hud-btn{pointer-events:auto;background:var(--panel2);border:1px solid #ffffff22;border-radius:8px;padding:6px 10px;color:var(--text);font-size:12px;cursor:pointer;font-weight:600;}
+  .hud-btn:hover{border-color:var(--accent);color:var(--accent);}
+  #money{font-size:18px;font-weight:700;color:var(--accent);}
+  #toolbar{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:center;padding-bottom:10px;pointer-events:none;}
+  #toolbar-inner{pointer-events:auto;display:flex;gap:8px;background:var(--panel);border:1px solid #ffffff14;border-radius:14px;padding:8px;box-shadow:0 6px 22px #0007;}
+  .tool-btn{width:56px;height:56px;border-radius:10px;background:var(--panel2);border:1px solid #ffffff10;color:var(--text);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:11px;gap:2px;transition:background .12s,transform .12s;}
+  .tool-btn:hover{background:#2c3a32;}
+  .tool-btn.active{background:var(--accent2);color:#0b1a10;border-color:var(--accent2);}
+  .tool-btn .glyph{font-size:20px;}
+  .hint{font-size:9px;color:var(--dim);}
+  .tool-btn.active .hint{color:#0b1a10cc;}
+
+  #buildPanel{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:8px;background:var(--panel);border:1px solid #ffffff14;border-radius:14px;padding:10px;box-shadow:0 6px 22px #0007;max-width:min(94vw,760px);}
+  #buildPanel.show{display:flex;}
+  #buildViewport{overflow:hidden;width:100%;}
+  #buildTrack{display:flex;gap:8px;will-change:transform;}
+  #buildSliderRow{width:88%;display:flex;align-items:center;gap:8px;}
+  #buildSlider{flex:1;accent-color:var(--accent2);}
+  .item-card{width:106px;flex:0 0 auto;background:var(--panel2);border-radius:10px;padding:8px;cursor:pointer;border:2px solid transparent;color:var(--text);}
+  .item-card:hover{border-color:#ffffff22;}
+  .item-card.sel{border-color:var(--accent);background:#2c3a2c;}
+  .item-card .swatch{width:100%;height:44px;border-radius:6px;margin-bottom:6px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+  .item-card .name{font-size:12px;font-weight:600;}
+  .item-card .cost{font-size:11px;color:var(--accent);}
+
+  /* ---- Recipes browser (modal) ---- */
+  #recipesPanel{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);display:none;flex-direction:column;background:var(--panel);border:1px solid #ffffff14;border-radius:14px;padding:10px 12px;box-shadow:0 6px 22px #0007;width:min(94vw,420px);max-height:60vh;color:var(--text);}
+  #recipesPanel.show{display:flex;}
+  #recipesPanel .rp-header{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:6px;}
+  #recipesPanel .rp-close{cursor:pointer;color:var(--dim);font-size:16px;}
+  #recipesList{overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+  .rp-row{background:var(--panel2);border-radius:8px;padding:8px 10px;cursor:pointer;}
+  .rp-row-head{display:flex;justify-content:space-between;align-items:center;}
+  .rp-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:7px;}
+  .item-ico{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:3px;vertical-align:middle;border:1px solid #00000055;}
+  .rp-price{color:var(--accent);font-size:12px;}
+  .rp-detail{margin-top:8px;padding-top:8px;border-top:1px solid #ffffff14;font-size:12px;color:var(--dim);display:none;}
+  .rp-row.open .rp-detail{display:block;}
+  .rp-detail b{color:var(--text);}
+  .rp-detail .rp-line{margin-top:4px;}
+  #recipesEmpty{color:var(--dim);font-size:12px;padding:8px 2px;}
+
+  /* ---- Machine recipe-select mini panel ---- */
+  #recipeSelectPanel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;background:var(--panel);border:1px solid #ffffff22;border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px #000a;width:min(92vw,340px);color:var(--text);z-index:60;gap:8px;}
+  #recipeSelectPanel.show{display:flex;}
+  #recipeSelectPanel .rs-header{display:flex;justify-content:space-between;align-items:center;font-weight:700;}
+  #recipeSelectPanel .rs-close{cursor:pointer;color:var(--dim);}
+  .rs-option{background:var(--panel2);border:2px solid transparent;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px;}
+  .rs-option:hover{border-color:#ffffff22;}
+  .rs-option.sel{border-color:var(--accent);background:#2c3a2c;}
+  .rs-option .rs-out{color:var(--accent);font-weight:600;}
+
+  #info{position:fixed;top:12px;right:12px;max-width:260px;text-align:right;pointer-events:none;}
+  #info div{margin-bottom:6px;}
+  #msg{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#00000090;color:#fff;padding:6px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;}
+  #msg.show{opacity:1;}
+
+  #tooltip{position:fixed;pointer-events:none;background:var(--panel);border:1px solid #ffffff22;border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);box-shadow:0 6px 18px #0008;display:none;width:230px;z-index:50;}
+  #tooltip .t-title{font-weight:700;font-size:13px;margin-bottom:4px;color:var(--accent);}
+  #tooltip .t-row{display:flex;justify-content:space-between;gap:14px;color:var(--dim);margin-top:2px;}
+  #tooltip .t-row b{color:var(--text);font-weight:600;}
+
+  #topLeft{display:flex;gap:8px;flex-direction:column;}
+  kbd{background:#000000aa;border:1px solid #ffffff22;border-radius:4px;padding:1px 5px;font-size:11px;}
+
+  /* ---- Save-slot menu (shown before the game starts) ---- */
+  #slotMenu{position:fixed;inset:0;background:radial-gradient(circle at 50% 30%, #1c2e1c, #0a0f0a 70%);z-index:500;display:none;align-items:center;justify-content:center;}
+  #slotMenu.show{display:flex;}
+  #slotMenuInner{text-align:center;color:var(--text);}
+  #slotMenuInner h1{font-size:32px;letter-spacing:3px;margin:0 0 8px;color:var(--accent);text-shadow:0 0 22px #00000088;}
+  #slotMenuInner .slot-sub{color:var(--dim);font-size:13px;margin-bottom:26px;}
+  #slotGrid{display:grid;grid-template-columns:repeat(2,220px);gap:16px;}
+  .slot-card{background:var(--panel);border:2px solid #ffffff18;border-radius:14px;padding:18px;cursor:pointer;transition:.15s;min-height:96px;display:flex;flex-direction:column;justify-content:center;text-align:left;}
+  .slot-card:hover{border-color:var(--accent);transform:translateY(-2px);}
+  .slot-card.empty{opacity:0.65;border-style:dashed;}
+  .slot-card .slot-name{font-weight:700;font-size:15px;margin-bottom:6px;}
+  .slot-card .slot-meta{font-size:11px;color:var(--dim);}
+
+  #slotNameModal,#slotDeleteConfirm{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;background:var(--panel);border:1px solid #ffffff22;border-radius:14px;padding:14px 16px;box-shadow:0 10px 30px #000a;width:min(92vw,320px);color:var(--text);z-index:520;gap:10px;}
+  #slotNameModal.show,#slotDeleteConfirm.show{display:flex;}
+  #slotNameInput{background:var(--panel2);color:var(--text);border:1px solid #ffffff22;border-radius:6px;padding:8px 10px;font-size:13px;}
+  #slotDeleteConfirm .slot-warn{font-size:12px;color:var(--dim);}
+  #slotDeleteConfirm .row{display:flex;gap:8px;}
+
+  #slotContextMenu{position:fixed;display:none;background:var(--panel);border:1px solid #ffffff22;border-radius:8px;padding:4px;z-index:530;box-shadow:0 6px 18px #000a;}
+  #slotContextMenu.show{display:block;}
+  #slotContextMenu div{padding:8px 16px;font-size:12px;color:var(--text);cursor:pointer;border-radius:6px;white-space:nowrap;}
+  #slotContextMenu div:hover{background:#c0392b33;color:#ff8a7a;}
+
+  #authPanel{display:flex;flex-direction:column;align-items:center;margin-bottom:22px;width:280px;}
+  .auth-input{width:100%;background:var(--panel2);color:var(--text);border:1px solid #ffffff22;border-radius:8px;padding:9px 12px;font-size:13px;margin-top:8px;box-sizing:border-box;}
+  .auth-btn-row{display:flex;gap:8px;margin-top:10px;width:100%;}
+  .auth-btn-row .hud-btn{flex:1;}
+  #authError{color:#ff8a7a;font-size:11px;margin-top:8px;min-height:14px;}
+  #signedInBar{display:none;color:var(--dim);font-size:12px;margin-bottom:18px;}
+  #signedInBar b{color:var(--text);}
+  #signedInBar #btnSignOut{color:var(--accent);cursor:pointer;}
+  #signedInBar #btnSignOut:hover{text-decoration:underline;}
+  .slot-loading{grid-column:1/-1;color:var(--dim);font-size:13px;padding:20px;text-align:center;}
+</style>
+</head>
+<body>
+<canvas id="world"></canvas>
+
+<div id="hud">
+  <div id="topLeft">
+    <div class="chip" id="money">$1000</div>
+    <div class="chip" id="saveLoadRow" style="display:flex;gap:6px;padding:6px;">
+      <button class="hud-btn" id="btnSave" title="Save to the current slot">💾 Save</button>
+      <button class="hud-btn" id="btnMenu" title="Save and return to the slot menu">🗂 Menu</button>
+    </div>
+    <div class="chip" style="font-size:11px;line-height:1.5;">
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move &nbsp;•&nbsp; <kbd>0</kbd> Select &nbsp; <kbd>1</kbd> Build &nbsp; <kbd>2</kbd> Wire &nbsp; <kbd>4</kbd> Recipes &nbsp; <kbd>5</kbd> Connectors &nbsp; <kbd>Z</kbd> Glove &nbsp; <kbd>R</kbd> Rotate &nbsp; <kbd>F</kbd> Flip (also while holding w/ Glove) &nbsp; <kbd>U</kbd> Pipe shape &nbsp; <kbd>Esc</kbd> Cancel
+    </div>
+  </div>
+  <div class="chip" id="info">
+    <div>Income: <b id="incomeInfo">$0/min</b></div>
+    <div>Power/sec: <b id="powInfo">0 / 0 W</b></div>
+    <div>Iron shipped: <b id="shipInfo">0</b></div>
+  </div>
+</div>
+
+<div id="msg"></div>
+<div id="tooltip"></div>
+
+<div id="slotMenu">
+  <div id="slotMenuInner">
+    <h1>fact0rization</h1>
+
+    <div id="authPanel">
+      <div class="slot-sub">Sign in to save your factories to the cloud</div>
+      <input type="text" id="authUsername" class="auth-input" placeholder="Username" autocomplete="username" maxlength="20">
+      <input type="password" id="authPassword" class="auth-input" placeholder="Password" autocomplete="current-password">
+      <div class="auth-btn-row">
+        <button class="hud-btn" id="btnUserSignIn">Sign In</button>
+        <button class="hud-btn" id="btnUserSignUp">Create Account</button>
+      </div>
+      <div id="authError"></div>
+    </div>
+
+    <div id="signedInBar">
+      Signed in as <b id="signedInEmail"></b> · <span id="btnSignOut">Sign out</span>
+    </div>
+    <div class="slot-sub" id="slotSub" style="display:none;">Pick a save slot to begin</div>
+    <div id="slotGrid"></div>
+  </div>
+</div>
+
+<div id="slotNameModal">
+  <div class="rs-header"><span>Name your save</span><span class="rs-close" id="slotNameClose">✕</span></div>
+  <input type="text" id="slotNameInput" maxlength="24" placeholder="My Factory">
+  <button class="hud-btn" id="slotNameConfirm" style="background:var(--accent);color:#0d1016;border-color:var(--accent);">Start</button>
+</div>
+
+<div id="slotDeleteConfirm">
+  <div class="rs-header"><span id="slotDeleteTitle">Delete save?</span></div>
+  <div class="slot-warn">This can't be undone.</div>
+  <div class="row">
+    <button class="hud-btn" id="slotDeleteCancel">Cancel</button>
+    <button class="hud-btn" id="slotDeleteYes" style="background:#c0392b;color:#fff;border-color:#c0392b;">Delete</button>
+  </div>
+</div>
+
+<div id="slotContextMenu"><div id="slotContextDelete">🗑 Delete save</div></div>
+
+<div id="buildPanel">
+  <div id="buildViewport"><div id="buildTrack"></div></div>
+  <div id="buildSliderRow"><input type="range" id="buildSlider" min="0" max="0" value="0" step="1"></div>
+</div>
+
+<div id="recipesPanel">
+  <div class="rp-header"><span>Recipes</span><span class="rp-close" id="recipesClose">✕</span></div>
+  <div id="recipesList"></div>
+</div>
+
+<div id="recipeSelectPanel">
+  <div class="rs-header"><span id="rsTitle">Recipe</span><span class="rs-close" id="rsClose">✕</span></div>
+  <div id="rsOptions"></div>
+</div>
+
+<div id="toolbar">
+  <div id="toolbar-inner">
+    <div class="tool-btn" data-tool="select"><div class="glyph">🖐</div>select<div class="hint">0</div></div>
+    <div class="tool-btn" data-tool="build"><div class="glyph">🔨</div>build<div class="hint">1</div></div>
+    <div class="tool-btn" data-tool="wire"><div class="glyph">🔌</div>wire<div class="hint">2</div></div>
+    <div class="tool-btn" data-tool="demolish"><div class="glyph">🗑</div>demolish<div class="hint">3</div></div>
+    <div class="tool-btn" data-tool="recipes"><div class="glyph">📖</div>recipes<div class="hint">4</div></div>
+    <div class="tool-btn" data-tool="connectors"><div class="glyph">🔗</div>connectors<div class="hint">5</div></div>
+    <div class="tool-btn" data-tool="glove"><div class="glyph">🧤</div>glove<div class="hint">Z</div></div>
+  </div>
+</div>
+
+<script type="module">
+  // Firebase (auth + Firestore for the save slots). Loaded as a module, so it's bridged
+  // onto window.FB for the classic script tag below — modules and classic scripts don't share
+  // scope. window dispatches 'fb-ready' once this is set up, since module scripts are
+  // deferred and may finish after the classic script starts running.
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+    updateProfile, onAuthStateChanged, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, deleteDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCx7bjvaKvc9SkLpqwG7StrK-TUwR8uVbI",
+    authDomain: "projectsmoke-d43b4.firebaseapp.com",
+    projectId: "projectsmoke-d43b4",
+    storageBucket: "projectsmoke-d43b4.firebasestorage.app",
+    messagingSenderId: "1012525258463",
+    appId: "1:1012525258463:web:30af67392600afb912fb6a",
+  };
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  // Firebase Auth only understands email/password natively, so a username signs in as
+  // `<username>@fact0rization.local` under the hood — deterministic, so sign-in never needs
+  // a lookup, and sign-up's uniqueness check comes for free from Firebase's own
+  // "email already in use" error. The original casing is kept via the Auth profile's
+  // displayName purely for showing "Signed in as X" — sign-in itself is case-insensitive.
+  window.FB = {
+    signInUsername: (username, pw) => signInWithEmailAndPassword(auth, username.toLowerCase()+'@fact0rization.local', pw),
+    signUpUsername: async (username, pw) => {
+      const cred = await createUserWithEmailAndPassword(auth, username.toLowerCase()+'@fact0rization.local', pw);
+      await updateProfile(cred.user, {displayName: username});
+      return cred;
+    },
+    signOutUser: () => signOut(auth),
+    onAuthChanged: (cb) => onAuthStateChanged(auth, cb),
+    // save slots live at users/{uid}/saves/{0..3} — matches the Firestore rules exactly
+    getSlot: (uid, i) => getDoc(doc(db, 'users', uid, 'saves', String(i))),
+    setSlot: (uid, i, data) => setDoc(doc(db, 'users', uid, 'saves', String(i)), data),
+    deleteSlot: (uid, i) => deleteDoc(doc(db, 'users', uid, 'saves', String(i))),
+  };
+  window.dispatchEvent(new Event('fb-ready'));
+</script>
+
+<script>
+/* ============================== CONFIG ============================== */
+const TILE = 44;
+const SCROLL_SPEED = 620; // px/sec camera pan speed for WASD movement
+const PIPE_TRANSFER_MS = 125;
+const MAX_PIPE_ITEMS = 6;
+const SOLAR_WATTS = 15;
+const INPUT_COLOR = '#4da3ff';   // blue = input side, everywhere
+const OUTPUT_COLOR = '#ff4d4d';  // red = output side, everywhere
+
+/* ---- item definitions ---- */
+const ITEMS = {
+  iron_ore:     {name:'Iron Ore',            price:20,  cat:'solid', color:'#b5651d'},
+  copper_ore:   {name:'Copper Ore',          price:25,  cat:'solid', color:'#e0793a'},
+  coal:         {name:'Coal',                price:15,  cat:'solid', color:'#232323'},
+  liquid_iron:  {name:'Liquid Iron',         price:45,  cat:'fluid', color:'#ff9d4d'},
+  liquid_copper:{name:'Liquid Copper',       price:55,  cat:'fluid', color:'#ff7a5c'},
+  iron_ingot:   {name:'Iron Ingot',          price:65,  cat:'solid', color:'#c7cbd1'},
+  copper_ingot: {name:'Copper Ingot',        price:80,  cat:'solid', color:'#d98a3d'},
+  copper_plate: {name:'Copper Plate',        price:160, cat:'solid', color:'#e8a34d'},
+  iron_plate:   {name:'Iron Plate',          price:140, cat:'solid', color:'#9aa3ab'},
+  carbon_block: {name:'Compressed Carbon Block',price:180,cat:'solid', color:'#111111'},
+  wood_log:     {name:'Wood Log',            price:10,  cat:'solid', color:'#8a5a2b'},
+  charcoal:     {name:'Charcoal',            price:30,  cat:'solid', color:'#2b2b2b'},
+  cu_fe_alloy:  {name:'Cu-Fe Alloy',         price:285, cat:'solid', color:'#b8793f'},
+  circuit_board:{name:'Circuit Board',       price:100, cat:'solid', color:'#2e5d34'},
+  iron_block:   {name:'Iron Block',          price:215, cat:'solid', color:'#7c828a'},
+  copper_block: {name:'Copper Block',        price:250, cat:'solid', color:'#c9762f'},
+  coal_block:   {name:'Coal Block',          price:60,  cat:'solid', color:'#161616'},
+  iron_nails:   {name:'Iron Nails',          price:14,  cat:'solid', color:'#aeb4ba'},
+  iron_coils:   {name:'Iron Coils',          price:40,  cat:'solid', color:'#8f96a0'},
+  copper_nails: {name:'Copper Nails',        price:12,  cat:'solid', color:'#e3924a'},
+  copper_coils: {name:'Copper Coils',        price:30,  cat:'solid', color:'#d67f36'},
+  water:        {name:'Water',               price:15,  cat:'fluid', color:'#4fa3d9'},
+  gold:         {name:'Gold',                price:45,  cat:'solid', color:'#e6c235'},
+  liquid_bronze:{name:'Liquid Bronze',       price:95,  cat:'fluid', color:'#a3702f'},
+  liquid_cu_fe_alloy:{name:'Liquid Cu-Fe Alloy', price:110, cat:'fluid', color:'#c07a4a'},
+  liquid_steel: {name:'Liquid Steel',        price:130, cat:'fluid', color:'#9aa3ad'},
+  electromagnet:{name:'Electromagnet',       price:220, cat:'solid', color:'#4a4a90'},
+  fiberglass_pcb:{name:'Fiberglass PCB',     price:260, cat:'solid', color:'#3d7a45'},
+  cu_fe_ingot:  {name:'Cu-Fe Ingot',         price:150, cat:'solid', color:'#c07a4a'},
+  steel_ingot:  {name:'Steel Ingot',         price:140, cat:'solid', color:'#8f96a0'},
+  heavy_bolts:  {name:'Heavy Bolts',         price:45,  cat:'solid', color:'#5a5f68'},
+  silicon_microchip:{name:'Silicon Microchip', price:550, cat:'solid', color:'#2b3b2b'},
+  quantum_logic_processor:{name:'Quantum Logic Processor', price:1400, cat:'solid', color:'#7a3fd9'},
+  reinforced_heavy_alloy_frame:{name:'Reinforced Heavy Alloy Frame', price:950, cat:'solid', color:'#4a4f57'},
+  industrial_automation_core:{name:'Industrial Automation Core', price:1100, cat:'solid', color:'#c9762f'},
+};
+
+/* ---- burner fuel table: item -> {watts, ms} ---- */
+const BURNER_FUELS = {
+  wood_log: {watts:30, ms:2000},
+  charcoal: {watts:60, ms:3000},
+  coal:     {watts:75, ms:4000},
+};
+
+/* ---- placeable definitions ---- */
+const PLACEABLES = {
+  pipe:        {name:'Pipe',          cost:100,  w:1,h:1, kind:'pipe',  category:'solid', color:'#8a8f98'},
+  fluid_pipe:  {name:'Fluid Pipe',    cost:120,  w:1,h:1, kind:'pipe',  category:'fluid', color:'#3c6e91'},
+  drill:       {name:'Iron Drill',    cost:1000, w:2,h:1, kind:'drill', color:'#6b6f76', produces:'iron_ore',   prodMs:2000, watts:15, tex:'iron'},
+  coal_drill:  {name:'Coal Drill',    cost:500,  w:2,h:1, kind:'drill', color:'#6b6f76', produces:'coal',       prodMs:750,  watts:15, tex:'coal'},
+  copper_drill:{name:'Copper Drill',  cost:800,  w:2,h:1, kind:'drill', color:'#6b6f76', produces:'copper_ore', prodMs:1500, watts:15, tex:'copper'},
+  water_drill: {name:'Water Drill',   cost:900,  w:2,h:1, kind:'drill', color:'#3c6e91', produces:'water',      prodMs:1250, watts:15, tex:'water'},
+  gold_drill:  {name:'Gold Drill',    cost:2000, w:2,h:1, kind:'drill', color:'#6b6f76', produces:'gold',       prodMs:2000, watts:15, tex:'gold'},
+  solar:       {name:'Solar Panel',   cost:150,  w:1,h:1, kind:'solar', color:'#1c2b52'},
+  garage:      {name:'Garage',        cost:1000, w:2,h:2, kind:'garage',color:'#5a4a30'},
+  furnace:     {name:'Furnace',       cost:1250, w:2,h:2, kind:'processor', color:'#7a3b28', watts:20, minWatts:15, batchMs:2000,
+                 inCat:'solid', outCat:'fluid',
+                 recipes:[{in:{iron_ore:1}, out:{liquid_iron:1}},{in:{copper_ore:1}, out:{liquid_copper:1}},
+                          {in:{wood_log:1}, out:{charcoal:1}, batchMs:1500}]},
+  tree_farm:   {name:'Tree Farm',     cost:400,  w:2,h:2, kind:'farm', color:'#2f6e2f', watts:5, prodMs:3000, produces:'wood_log'},
+  storage:     {name:'Storage',       cost:300,  w:2,h:2, kind:'storage', color:'#6a5a3a', capacity:15},
+  molder:      {name:'Ingot Molder',  cost:1500, w:2,h:2, kind:'processor', color:'#555a63', watts:25, batchMs:1500,
+                 inCat:'fluid', outCat:'solid',
+                 recipes:[{in:{liquid_iron:1}, out:{iron_ingot:1}},{in:{liquid_copper:1}, out:{copper_ingot:1}},
+                          {in:{liquid_cu_fe_alloy:1}, out:{cu_fe_ingot:1}},{in:{liquid_steel:1}, out:{steel_ingot:1}}]},
+  compressor:  {name:'Compressor',    cost:1750, w:2,h:2, kind:'processor', color:'#40474f', watts:30, batchMs:2000,
+                 inCat:'solid', outCat:'solid',
+                 recipes:[{in:{copper_ingot:1}, out:{copper_plate:1}},{in:{iron_ingot:1}, out:{iron_plate:1}},{in:{coal:2}, out:{carbon_block:1}}]},
+  burner:      {name:'Burner',        cost:800,  w:2,h:2, kind:'burner', color:'#3a2a1c', watts:0},
+  combiner:    {name:'Combiner',      cost:2000, w:3,h:1, kind:'combiner', color:'#4a4a52', watts:30, batchMs:1500,
+                 manualRecipe:true, inputPorts:[[0,0],[1,0]], outputPorts:[[2,0]],
+                 recipes:[
+                   {in:{copper_ingot:2, iron_ingot:1}, out:{cu_fe_alloy:1}},
+                   {in:{copper_ingot:2, wood_log:1},   out:{circuit_board:1}},
+                   {in:{iron_ingot:4},                 out:{iron_block:1}},
+                   {in:{copper_ingot:4},                out:{copper_block:1}},
+                   {in:{coal:4},                        out:{coal_block:1}},
+                   {in:{cu_fe_alloy:1, copper_coils:2}, out:{electromagnet:1}},
+                 ]},
+  shaper:      {name:'Shaper',        cost:2500, w:2,h:3, kind:'shaper', color:'#5a5f68', watts:35, batchMs:2000,
+                 manualRecipe:true, inputPorts:[[0,0],[1,0]], outputPorts:[[0,2],[1,2]],
+                 recipes:[
+                   {in:{iron_ingot:1},   out:{iron_nails:5}},
+                   {in:{iron_ingot:1},   out:{iron_coils:2}},
+                   {in:{copper_ingot:1}, out:{copper_nails:5}},
+                   {in:{copper_ingot:1}, out:{copper_coils:2}},
+                   {in:{iron_ingot:1},   out:{heavy_bolts:3}},
+                 ]},
+  foundry:     {name:'Foundry',       cost:3000, w:3,h:2, kind:'multiport', color:'#5c3a2e', watts:45, batchMs:2500,
+                 manualRecipe:true, inputPorts:[[0,0],[0,1]], outputPorts:[[2,0],[2,1]],
+                 recipes:[
+                   {in:{copper_ore:2, iron_ore:1}, out:{liquid_cu_fe_alloy:1}},
+                   {in:{copper_ore:1, iron_ore:1}, out:{liquid_bronze:1}},
+                   {in:{coal:2, iron_ore:1},        out:{liquid_steel:1}},
+                 ]},
+  laminator:   {name:'Laminator',     cost:3000, w:4,h:1, kind:'multiport', color:'#2e5d34', watts:35, batchMs:2000,
+                 manualRecipe:false, inputPorts:[[0,0],[1,0],[2,0]], outputPorts:[[3,0]],
+                 recipes:[{in:{circuit_board:1, water:1, liquid_copper:1}, out:{fiberglass_pcb:1}}]},
+  core_combiner:{name:'Core Combiner', cost:5000, w:4,h:3, kind:'multiport', color:'#3a3a45', watts:120, batchMs:3000,
+                 manualRecipe:true, inputPorts:[[0,0],[0,1],[0,2]], outputPorts:[[3,1]],
+                 recipes:[
+                   {in:{silicon_microchip:1, cu_fe_ingot:1, copper_coils:2}, out:{quantum_logic_processor:1}},
+                   {in:{iron_block:1, copper_block:1, coal_block:1},         out:{reinforced_heavy_alloy_frame:1}},
+                   {in:{fiberglass_pcb:1, heavy_bolts:2, steel_ingot:1},     out:{industrial_automation_core:1}},
+                   {in:{fiberglass_pcb:1, iron_coils:2, carbon_block:1},     out:{silicon_microchip:1}},
+                 ]},
+};
+const BUILD_ORDER = ['pipe','fluid_pipe','drill','coal_drill','copper_drill','water_drill','gold_drill','solar','tree_farm','storage','burner','furnace','molder','compressor','combiner','shaper','foundry','laminator','core_combiner','garage'];
+
+const PIPE_SHAPES = ['straight','curve','t1','cross1','t2'];
+// local direction ids: 0 right, 1 down, 2 left, 3 up. 'out' rotates with obj.rotation.
+const SHAPE_DEF = {
+  straight: {in:[2],      out:[0]},
+  curve:    {in:[1],      out:[0]},
+  t1:       {in:[2,1],    out:[0]},
+  cross1:   {in:[2,1,3],  out:[0]},
+  t2:       {in:[3],      out:[0,2]},
+};
+
+/* ============================== STATE ============================== */
+const canvas = document.getElementById('world');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize(){ W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+resize(); addEventListener('resize', resize);
+
+const cam = {x:0, y:0};
+let mouseScreen = {x: innerWidth/2, y: innerHeight/2};
+let mouseInWindow = true;
+
+let money = 1250;
+let totalShipped = 0;
+let totalEarned = 0; // cumulative $ earned via garage sales, used for the income/min readout
+let garagesPlaced = 0;
+
+const grid = new Map();
+const objects = new Set();
+const wires = [];
+
+let tool = 'select';
+let selectedPlaceable = null;
+let ghostRotation = 0;
+let ghostPipeShape = 'straight';
+let ghostFlipped = false;
+let wirePending = null;
+let connSelected = null; // Connectors tool: pending source object for a manual (re)connect
+
+// geometric neighbors that are currently valid input sources for a pipe (used by Force Lock)
+function currentInputSources(obj){
+  const ids = new Set();
+  for(const [dx,dy] of obj.cells){
+    const cx = obj.ax+dx, cy = obj.ay+dy;
+    for(let d=0; d<4; d++){
+      const ncell = [cx+DIRS[d][0], cy+DIRS[d][1]];
+      const nb = grid.get(key(ncell[0], ncell[1]));
+      if(!nb || nb===obj) continue;
+      const cands = outputCandidates(nb);
+      if(cands.some(c=>c.cell[0]===cx && c.cell[1]===cy)) ids.add(nb.id);
+    }
+  }
+  return ids;
+}
+
+/* ============================== DISCOVERED ITEMS / RECIPES ============================== */
+const discoveredItems = new Set();
+function discoverItem(type){
+  if(discoveredItems.has(type)) return;
+  discoveredItems.add(type);
+  if(typeof renderRecipesPanel==='function' && recipesPanelOpen) renderRecipesPanel();
+}
+// static index of what produces / consumes each item, built once from PLACEABLES
+function buildRecipeIndex(){
+  const producedBy = {}, usedIn = {};
+  for(const key in PLACEABLES){
+    const def = PLACEABLES[key];
+    if((def.kind==='drill' || def.kind==='farm') && def.produces){
+      (producedBy[def.produces] = producedBy[def.produces]||[]).push({machine:def.name, mined:true});
+    }
+    if(def.recipes){
+      for(const r of def.recipes){
+        for(const outItem in r.out) (producedBy[outItem]=producedBy[outItem]||[]).push({machine:def.name, recipe:r});
+        for(const inItem in r.in) (usedIn[inItem]=usedIn[inItem]||[]).push({machine:def.name, recipe:r});
+      }
+    }
+  }
+  return {producedBy, usedIn};
+}
+const RECIPE_INDEX = buildRecipeIndex();
+
+/* ============================== HELPERS ============================== */
+function key(x,y){ return x+','+y; }
+function worldToCell(wx,wy){ return [Math.floor(wx/TILE), Math.floor(wy/TILE)]; }
+function screenToWorld(sx,sy){ return [sx+cam.x, sy+cam.y]; }
+function showMsg(text){
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(showMsg._t);
+  showMsg._t = setTimeout(()=>el.classList.remove('show'), 1400);
+}
+function fmtMoney(n){ return '$'+Math.floor(n).toLocaleString(); }
+const DIRS = [ [1,0], [0,1], [-1,0], [0,-1] ]; // 0 right,1 down,2 left,3 up
+const opp = d => (d+2)%4;
+
+/* ============================== OBJECT CREATION ============================== */
+function cellsFor(typeKey, rotation){
+  const def = PLACEABLES[typeKey];
+  if(def.kind==='pipe' || def.kind==='solar') return [[0,0]];
+  if(def.kind==='drill'){
+    const d = DIRS[rotation];
+    return [[0,0],[d[0],d[1]]];
+  }
+  // garage & processor: fixed rectangle, not rotatable
+  const cells = [];
+  for(let yy=0; yy<def.h; yy++) for(let xx=0; xx<def.w; xx++) cells.push([xx,yy]);
+  return cells;
+}
+
+function canPlace(typeKey, ax, ay, rotation){
+  const cells = cellsFor(typeKey, rotation);
+  for(const [dx,dy] of cells){
+    if(grid.has(key(ax+dx, ay+dy))) return false;
+  }
+  return true;
+}
+
+function placeObject(typeKey, ax, ay, rotation, pipeShape, flipped){
+  const def = PLACEABLES[typeKey];
+  const cells = cellsFor(typeKey, rotation);
+  const obj = {
+    id: Math.random().toString(36).slice(2),
+    type: typeKey, def, ax, ay, rotation: (def.kind==='pipe'||def.kind==='drill') ? rotation : 0,
+    flipped: !!flipped,      // sideways flip (F key) — mirrors input/output corner for 2-wide buildings
+    pipeShape: pipeShape||'straight',
+    cells,
+    itemQueue: [],           // pipes / drill buffer(1) / processor+farm+storage output buffer
+    inputBuffer: {},         // processors: {itemType: count}
+    maxItems: def.kind==='pipe' ? MAX_PIPE_ITEMS
+             : def.kind==='processor' ? MAX_PIPE_ITEMS
+             : def.kind==='farm' ? MAX_PIPE_ITEMS
+             : def.kind==='storage' ? def.capacity
+             : def.inputPorts ? MAX_PIPE_ITEMS
+             : def.kind==='burner' ? 6
+             : 1,
+    outRR: 0,                // round robin index for multi-output pipes
+    lastProd: performance.now() + Math.random()*400,
+    lastTransfer: performance.now() + Math.random()*400,
+    processingDoneAt: null,
+    processingRecipe: null,
+    powered: false,
+    suppliedWatts: 0,
+    active: def.kind==='storage' ? false : true, // storage output toggle
+    selectedRecipe: null,    // combiner / shaper: index into def.recipes chosen via UI
+    burnWatts: 0,            // burner: current instantaneous wattage while burning
+    burnEndAt: null,         // burner: timestamp current fuel item finishes burning
+    storedWatts: 0,          // burner: wattage available to wires (decays after burn ends)
+    storedDecayAt: null,     // burner: timestamp stored watts drop to 0
+    blockedLinks: new Set(), // Connectors tool: manually-disconnected output cell keys ("x,y")
+    forceLock: false,        // Connectors tool: pipe only accepts pushes from lockedFromIds
+    lockedFromIds: new Set(),// object ids allowed to push into this pipe while forceLock is on
+  };
+  for(const [dx,dy] of cells){ grid.set(key(ax+dx, ay+dy), obj); }
+  objects.add(obj);
+  return obj;
+}
+
+/* ============================== SAVE / LOAD ============================== */
+// Saves/loads go through a downloadable JSON file rather than localStorage — localStorage
+// (and window.prompt) can be silently blocked inside sandboxed preview iframes, so a real
+// file is the only way to guarantee this actually works wherever the game is opened.
+function serializeGame(){
+  const objList = [];
+  for(const obj of objects){
+    objList.push({
+      id: obj.id, type: obj.type, ax: obj.ax, ay: obj.ay,
+      rotation: obj.rotation, flipped: obj.flipped, pipeShape: obj.pipeShape,
+      itemQueue: obj.itemQueue.slice(),
+      inputBuffer: Object.assign({}, obj.inputBuffer),
+      outRR: obj.outRR,
+      selectedRecipe: obj.selectedRecipe,
+      active: obj.active,
+      storedWatts: obj.storedWatts,
+      forceLock: obj.forceLock,
+      lockedFromIds: Array.from(obj.lockedFromIds||[]),
+      blockedLinks: Array.from(obj.blockedLinks||[]),
+    });
+  }
+  return {
+    version: 1,
+    money, totalShipped, totalEarned, garagesPlaced,
+    cam: {x:cam.x, y:cam.y},
+    discoveredItems: Array.from(discoveredItems),
+    objects: objList,
+    wires: wires.map(w=>({from:w.from.id, to:w.to.id})),
+  };
+}
+function downloadSave(){
+  const data = serializeGame();
+  const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `fact0rization-save-${Date.now()}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function loadGame(data){
+  if(!data || !Array.isArray(data.objects)){ showMsg("That save doesn't look valid"); return; }
+  grid.clear(); objects.clear(); wires.length = 0; discoveredItems.clear();
+  wirePending = null; connSelected = null; heldObject = null;
+  money = data.money ?? 1250;
+  totalShipped = data.totalShipped || 0;
+  totalEarned = data.totalEarned || 0;
+  garagesPlaced = data.garagesPlaced || 0;
+  cam.x = (data.cam && data.cam.x) || 0;
+  cam.y = (data.cam && data.cam.y) || 0;
+  (data.discoveredItems||[]).forEach(k=>discoveredItems.add(k));
+  const idMap = new Map();
+  for(const o of data.objects){
+    if(!PLACEABLES[o.type]) continue; // skip anything from a save made with removed content
+    const obj = placeObject(o.type, o.ax, o.ay, o.rotation||0, o.pipeShape||'straight', !!o.flipped);
+    obj.id = o.id;
+    obj.itemQueue = (o.itemQueue||[]).slice();
+    obj.inputBuffer = Object.assign({}, o.inputBuffer||{});
+    obj.outRR = o.outRR||0;
+    obj.selectedRecipe = (o.selectedRecipe!=null) ? o.selectedRecipe : null;
+    if(o.active!=null) obj.active = o.active;
+    obj.storedWatts = o.storedWatts||0;
+    obj.forceLock = !!o.forceLock;
+    obj.blockedLinks = new Set(o.blockedLinks||[]);
+    idMap.set(o.id, obj);
+  }
+  for(const o of data.objects){
+    if(o.forceLock && idMap.has(o.id)){
+      idMap.get(o.id).lockedFromIds = new Set((o.lockedFromIds||[]).filter(id=>idMap.has(id)));
+    }
+  }
+  for(const w of (data.wires||[])){
+    const f = idMap.get(w.from), t = idMap.get(w.to);
+    if(f && t) wires.push({from:f, to:t});
+  }
+  incomeHistory = [];
+  lastIncomeSample = 0;
+}
+
+/* ---- Firestore-backed save slots (users/{uid}/saves/{0..3}) + auth ----
+   Cached in-memory per slot menu visit so cards don't re-fetch on every render. */
+let currentUser = null;
+let slotCache = [null,null,null,null];
+
+async function readSlot(i){
+  if(!currentUser) return null;
+  try{
+    const snap = await window.FB.getSlot(currentUser.uid, i);
+    return snap.exists() ? snap.data() : null;
+  } catch(err){
+    console.error(err);
+    showMsg('Could not reach the cloud — check your connection');
+    return null;
+  }
+}
+async function writeSlotData(i, name, gameData){
+  if(!currentUser) return;
+  try{
+    await window.FB.setSlot(currentUser.uid, i, {name, savedAt: Date.now(), data: gameData});
+  } catch(err){
+    console.error(err);
+    showMsg('Save failed — check your connection');
+  }
+}
+async function deleteSlotData(i){
+  if(!currentUser) return;
+  try{ await window.FB.deleteSlot(currentUser.uid, i); }
+  catch(err){ console.error(err); showMsg('Delete failed — check your connection'); }
+}
+
+/* ---- save-slot menu ---- */
+let activeSlot = null;
+let gameStarted = false;
+let pendingNewSlot = null;
+let pendingDeleteSlot = null;
+
+function showAuthPanel(){
+  document.getElementById('authPanel').style.display = 'flex';
+  document.getElementById('signedInBar').style.display = 'none';
+  document.getElementById('slotSub').style.display = 'none';
+  document.getElementById('slotGrid').innerHTML = '';
+}
+function showSlotPanel(){
+  document.getElementById('authPanel').style.display = 'none';
+  document.getElementById('signedInBar').style.display = 'block';
+  document.getElementById('slotSub').style.display = 'block';
+  document.getElementById('signedInEmail').textContent = currentUser.displayName || (currentUser.email||'').split('@')[0] || currentUser.uid;
+}
+
+async function renderSlotMenu(){
+  const gridEl = document.getElementById('slotGrid');
+  gridEl.innerHTML = '<div class="slot-loading">Loading your saves…</div>';
+  const slots = await Promise.all([0,1,2,3].map(i=>readSlot(i)));
+  slotCache = slots;
+  gridEl.innerHTML = '';
+  for(let i=0;i<4;i++){
+    const s = slots[i];
+    const card = document.createElement('div');
+    card.className = 'slot-card' + (s ? '' : ' empty');
+    if(s){
+      const d = new Date(s.savedAt);
+      const stamp = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      card.innerHTML = `<div class="slot-name">${s.name}</div><div class="slot-meta">${fmtMoney((s.data&&s.data.money)||0)} • ${stamp}</div>`;
+    } else {
+      card.innerHTML = `<div class="slot-name">Empty Slot ${i+1}</div><div class="slot-meta">Click to start a new factory</div>`;
+    }
+    card.addEventListener('click', ()=>{ s ? openSlot(i, s) : openNameModal(i); });
+    card.addEventListener('contextmenu', e=>{
+      e.preventDefault();
+      if(!s) return;
+      pendingDeleteSlot = i;
+      const cm = document.getElementById('slotContextMenu');
+      cm.style.left = e.clientX+'px'; cm.style.top = e.clientY+'px';
+      cm.classList.add('show');
+    });
+    gridEl.appendChild(card);
+  }
+}
+function openNameModal(i){
+  pendingNewSlot = i;
+  document.getElementById('slotNameInput').value = '';
+  document.getElementById('slotNameModal').classList.add('show');
+  setTimeout(()=>document.getElementById('slotNameInput').focus(), 0);
+}
+function closeNameModal(){
+  document.getElementById('slotNameModal').classList.remove('show');
+  pendingNewSlot = null;
+}
+async function confirmNewSlot(){
+  if(pendingNewSlot==null) return;
+  const i = pendingNewSlot;
+  const raw = document.getElementById('slotNameInput').value.trim().slice(0,24);
+  const name = raw || `Factory ${i+1}`;
+  closeNameModal();
+  startFreshGame();
+  activeSlot = i;
+  showMsg('Saving…');
+  await writeSlotData(i, name, serializeGame());
+  enterGame(name);
+}
+function openSlot(i, s){
+  loadGame(s.data);
+  activeSlot = i;
+  enterGame(s.name);
+}
+function startFreshGame(){
+  grid.clear(); objects.clear(); wires.length = 0; discoveredItems.clear();
+  wirePending = null; connSelected = null; heldObject = null;
+  money = 1250; totalShipped = 0; totalEarned = 0; garagesPlaced = 0;
+  cam.x = 0; cam.y = 0;
+  incomeHistory = []; lastIncomeSample = 0;
+  ensureStarterGarage();
+}
+function enterGame(name){
+  document.getElementById('slotMenu').classList.remove('show');
+  gameStarted = true;
+  setTool('select');
+  showMsg(`Playing: ${name}`);
+}
+async function saveActiveSlot(silent){
+  if(activeSlot==null || !currentUser) return;
+  if(!silent) showMsg('Saving…');
+  const existing = slotCache[activeSlot];
+  await writeSlotData(activeSlot, existing ? existing.name : `Factory ${activeSlot+1}`, serializeGame());
+  if(!silent) showMsg('Saved to the cloud');
+}
+async function returnToMenu(){
+  if(activeSlot!=null) await saveActiveSlot(true);
+  gameStarted = false;
+  document.getElementById('slotMenu').classList.add('show');
+  await renderSlotMenu();
+}
+
+/* ---- auth wiring ---- */
+function initFirebaseAuthFlow(){
+  window.FB.onAuthChanged(async user=>{
+    currentUser = user;
+    if(user){
+      showSlotPanel();
+      await renderSlotMenu();
+    } else {
+      gameStarted = false;
+      document.getElementById('slotMenu').classList.add('show');
+      showAuthPanel();
+    }
+  });
+}
+if(window.FB) initFirebaseAuthFlow();
+else addEventListener('fb-ready', initFirebaseAuthFlow, {once:true});
+
+function validUsername(u){ return /^[a-zA-Z0-9_]{3,20}$/.test(u); }
+function friendlyAuthError(err){
+  const code = err.code || '';
+  if(code.includes('wrong-password') || code.includes('invalid-credential')) return 'Incorrect username or password';
+  if(code.includes('user-not-found')) return 'No account with that username';
+  if(code.includes('email-already-in-use')) return 'That username is taken';
+  if(code.includes('weak-password')) return 'Password must be at least 6 characters';
+  if(code.includes('too-many-requests')) return 'Too many attempts — try again in a bit';
+  return err.message || 'Something went wrong';
+}
+document.getElementById('btnUserSignIn').addEventListener('click', async ()=>{
+  const username = document.getElementById('authUsername').value.trim();
+  const pw = document.getElementById('authPassword').value;
+  document.getElementById('authError').textContent = '';
+  if(!validUsername(username)){ document.getElementById('authError').textContent = 'Username must be 3–20 letters, numbers, or underscores'; return; }
+  try{ await window.FB.signInUsername(username, pw); }
+  catch(err){ document.getElementById('authError').textContent = friendlyAuthError(err); }
+});
+document.getElementById('btnUserSignUp').addEventListener('click', async ()=>{
+  const username = document.getElementById('authUsername').value.trim();
+  const pw = document.getElementById('authPassword').value;
+  document.getElementById('authError').textContent = '';
+  if(!validUsername(username)){ document.getElementById('authError').textContent = 'Username must be 3–20 letters, numbers, or underscores'; return; }
+  if(pw.length < 6){ document.getElementById('authError').textContent = 'Password must be at least 6 characters'; return; }
+  try{ await window.FB.signUpUsername(username, pw); }
+  catch(err){ document.getElementById('authError').textContent = friendlyAuthError(err); }
+});
+document.getElementById('btnSignOut').addEventListener('click', async ()=>{
+  await window.FB.signOutUser();
+});
+[document.getElementById('authUsername'), document.getElementById('authPassword')].forEach(el=>{
+  el.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('btnUserSignIn').click(); } });
+});
+
+document.getElementById('btnSave').addEventListener('click', ()=> saveActiveSlot(false));
+document.getElementById('btnMenu').addEventListener('click', returnToMenu);
+document.getElementById('slotNameClose').addEventListener('click', closeNameModal);
+document.getElementById('slotNameConfirm').addEventListener('click', confirmNewSlot);
+document.getElementById('slotNameInput').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); confirmNewSlot(); } });
+
+document.getElementById('slotContextDelete').addEventListener('click', ()=>{
+  document.getElementById('slotContextMenu').classList.remove('show');
+  if(pendingDeleteSlot==null) return;
+  const s = slotCache[pendingDeleteSlot];
+  document.getElementById('slotDeleteTitle').textContent = `Delete "${s ? s.name : 'this save'}"?`;
+  document.getElementById('slotDeleteConfirm').classList.add('show');
+});
+document.getElementById('slotDeleteCancel').addEventListener('click', ()=>{
+  document.getElementById('slotDeleteConfirm').classList.remove('show');
+  pendingDeleteSlot = null;
+});
+document.getElementById('slotDeleteYes').addEventListener('click', async ()=>{
+  if(pendingDeleteSlot!=null) await deleteSlotData(pendingDeleteSlot);
+  document.getElementById('slotDeleteConfirm').classList.remove('show');
+  pendingDeleteSlot = null;
+  await renderSlotMenu();
+});
+addEventListener('click', e=>{
+  const cm = document.getElementById('slotContextMenu');
+  if(cm.classList.contains('show') && !cm.contains(e.target)) cm.classList.remove('show');
+});
+
+function removeObject(obj){
+  for(const [dx,dy] of obj.cells){
+    grid.delete(key(obj.ax+dx, obj.ay+dy));
+  }
+  objects.delete(obj);
+  for(let i=wires.length-1;i>=0;i--){
+    if(wires[i].from===obj || wires[i].to===obj) wires.splice(i,1);
+  }
+}
+
+/* ---- Glove tool: pick up a placed object and move it to a new free spot ---- */
+let heldObject = null;
+function liftObject(obj){
+  for(const [dx,dy] of obj.cells){ grid.delete(key(obj.ax+dx, obj.ay+dy)); }
+  heldObject = obj;
+}
+function dropHeldAt(ax, ay){
+  const free = heldObject.cells.every(([dx,dy]) => !grid.has(key(ax+dx, ay+dy)));
+  if(!free) return false;
+  heldObject.ax = ax; heldObject.ay = ay;
+  for(const [dx,dy] of heldObject.cells){ grid.set(key(ax+dx, ay+dy), heldObject); }
+  heldObject = null;
+  return true;
+}
+function cancelHeld(){
+  if(!heldObject) return;
+  for(const [dx,dy] of heldObject.cells){ grid.set(key(heldObject.ax+dx, heldObject.ay+dy), heldObject); }
+  heldObject = null;
+}
+
+/* ---- pipe shape direction sets (absolute, mirrored then rotated) ---- */
+// mirrorDir flips a direction across the vertical axis (left<->right, up/down unchanged) —
+// this is what F (flip) does to a pipe's shape before rotation is applied.
+function mirrorDir(d){ return d===0 ? 2 : (d===2 ? 0 : d); }
+function pipeInputsAbs(obj){
+  return SHAPE_DEF[obj.pipeShape].in.map(d=>{
+    const m = obj.flipped ? mirrorDir(d) : d;
+    return (m+obj.rotation)%4;
+  });
+}
+function pipeOutputsAbs(obj){
+  return SHAPE_DEF[obj.pipeShape].out.map(d=>{
+    const m = obj.flipped ? mirrorDir(d) : d;
+    return (m+obj.rotation)%4;
+  });
+}
+
+/* ---- output candidate directions/cells to attempt a push toward ---- */
+function outputCandidates(obj){
+  return rawOutputCandidates(obj).filter(c => !obj.blockedLinks.has(key(c.cell[0], c.cell[1])));
+}
+function rawOutputCandidates(obj){
+  if(obj.def.kind==='pipe'){
+    const outs = pipeOutputsAbs(obj);
+    const dir = outs.length===1 ? outs[0] : outs[obj.outRR % outs.length];
+    const d = DIRS[dir];
+    return [{cell:[obj.ax+d[0], obj.ay+d[1]], dir}];
+  }
+  if(obj.def.kind==='drill'){
+    const d = DIRS[obj.rotation];
+    return [{cell:[obj.ax+d[0]*2, obj.ay+d[1]*2], dir: obj.rotation}];
+  }
+  if(obj.def.kind==='processor'){
+    return cornerOutputCandidates(obj);
+  }
+  if(obj.def.kind==='farm'){
+    return cornerOutputCandidates(obj);
+  }
+  if(obj.def.kind==='storage'){
+    if(!obj.active) return []; // output only pushes while toggled on
+    return cornerOutputCandidates(obj);
+  }
+  if(obj.def.inputPorts){
+    // generic multi-port machine: combiner, shaper, foundry, laminator, core combiner
+    const outs = multiOutputCells(obj);
+    const dir = multiOutDir(obj);
+    const d = DIRS[dir];
+    return outs.map(c=>({cell:[c[0]+d[0], c[1]+d[1]], dir}));
+  }
+  if(obj.def.kind==='burner') return []; // no item output, only power via wires
+  return [];
+}
+
+// ---- generic multi-port machines (combiner, shaper, foundry, laminator, core combiner) ----
+// Ports are defined relative to the unflipped footprint in def.inputPorts / def.outputPorts.
+// If the footprint is wider than tall, flip mirrors left<->right; otherwise it mirrors top<->bottom.
+function multiPortWide(def){ return def.w >= def.h; }
+function multiMapPort(obj, dx, dy){
+  const wide = multiPortWide(obj.def);
+  let mdx=dx, mdy=dy;
+  if(obj.flipped){
+    if(wide) mdx = obj.def.w-1-dx;
+    else mdy = obj.def.h-1-dy;
+  }
+  return [obj.ax+mdx, obj.ay+mdy];
+}
+function multiInputCells(obj){ return obj.def.inputPorts.map(([dx,dy])=>multiMapPort(obj,dx,dy)); }
+function multiOutputCells(obj){ return obj.def.outputPorts.map(([dx,dy])=>multiMapPort(obj,dx,dy)); }
+function multiOutDir(obj){
+  const wide = multiPortWide(obj.def);
+  if(wide) return obj.flipped ? 2 : 0; // right, or left when flipped
+  return obj.flipped ? 3 : 1;          // down, or up when flipped
+}
+
+// shared corner-output logic for 2-wide fixed-footprint buildings (processor / farm / storage).
+// Normally outputs from the bottom-right tile (right + down). Flipping (F key while holding
+// the ghost in build mode) mirrors this sideways to the bottom-left tile (left + down).
+function cornerOutputCandidates(obj){
+  const cornerX = obj.flipped ? obj.ax : obj.ax+obj.def.w-1;
+  const cornerY = obj.ay+obj.def.h-1;
+  const outDir = obj.flipped ? 2 : 0; // 2=left, 0=right
+  const dOut = DIRS[outDir], dDown = DIRS[1];
+  return [
+    {cell:[cornerX+dOut[0], cornerY+dOut[1]], dir:outDir},
+    {cell:[cornerX+dDown[0], cornerY+dDown[1]], dir:1},
+  ];
+}
+
+function neighborAt(cell, dir){
+  const d = DIRS[dir];
+  return grid.get(key(cell[0]+d[0], cell[1]+d[1])) || null;
+}
+
+function itemUsedByAnyRecipe(def, itemType){
+  return def.recipes.some(r => itemType in r.in);
+}
+
+function acceptsInput(nb, fromDir, itemType, fromObj){
+  if(!nb) return false;
+  const cat = ITEMS[itemType].cat;
+  if(nb.def.kind==='pipe'){
+    if(nb.def.category !== cat) return false;
+    if(nb.itemQueue.length >= nb.maxItems) return false;
+    if(nb.forceLock && (!fromObj || !nb.lockedFromIds.has(fromObj.id))) return false;
+    return pipeInputsAbs(nb).includes(fromDir);
+  }
+  if(nb.def.kind==='garage') return true;
+  if(nb.def.kind==='processor'){
+    // must be pushed into exactly the input tile; resolved in pushInto using cell match
+    return false;
+  }
+  if(nb.def.kind==='storage'){
+    if(nb.itemQueue.length >= nb.maxItems) return false;
+    return true;
+  }
+  if(nb.def.kind==='combiner' || nb.def.kind==='shaper' || nb.def.kind==='burner' || nb.def.inputPorts){
+    // must be pushed into exactly one of the input tiles; resolved in pushInto using cell match
+    return false;
+  }
+  return false; // drills / solar / farms never accept
+}
+
+// input tile for a processor: top-right when flipped, top-left otherwise
+function processorInCell(nb){
+  return [nb.flipped ? nb.ax+nb.def.w-1 : nb.ax, nb.ay];
+}
+
+// active recipe for a machine: auto-selected best match for processors,
+// manually chosen (via the recipe-select UI) for combiners/shapers/foundry/core combiner.
+function findActiveRecipe(obj){
+  if(obj.def.manualRecipe){
+    if(obj.selectedRecipe==null) return null;
+    return obj.def.recipes[obj.selectedRecipe];
+  }
+  return obj.def.recipes.find(r => Object.keys(r.in).every(it => (obj.inputBuffer[it]||0) >= r.in[it]));
+}
+
+function pushInto(nb, targetCell, itemType, fromObj){
+  const cat = ITEMS[itemType].cat;
+  if(nb.def.kind==='garage'){
+    money += ITEMS[itemType].price;
+    totalShipped++;
+    totalEarned += ITEMS[itemType].price;
+    return true;
+  }
+  if(nb.def.kind==='processor'){
+    const inCell = processorInCell(nb);
+    if(targetCell[0]!==inCell[0] || targetCell[1]!==inCell[1]) return false;
+    if(nb.def.inCat !== cat) return false;
+    if(!itemUsedByAnyRecipe(nb.def, itemType)) return false;
+    const bufTotal = Object.values(nb.inputBuffer).reduce((a,b)=>a+b,0);
+    if(bufTotal >= nb.maxItems) return false;
+    nb.inputBuffer[itemType] = (nb.inputBuffer[itemType]||0) + 1;
+    return true;
+  }
+  if(nb.def.kind==='storage'){
+    if(nb.itemQueue.length >= nb.maxItems) return false;
+    nb.itemQueue.push(itemType);
+    return true;
+  }
+  if(nb.def.inputPorts){
+    // generic multi-port machine: combiner, shaper, foundry, laminator, core combiner
+    const cells = multiInputCells(nb);
+    if(!cells.some(c=>c[0]===targetCell[0] && c[1]===targetCell[1])) return false;
+    let allowedRecipes;
+    if(nb.def.manualRecipe){
+      if(nb.selectedRecipe==null) return false; // no recipe chosen yet — rejects everything
+      allowedRecipes = [nb.def.recipes[nb.selectedRecipe]];
+    } else {
+      allowedRecipes = nb.def.recipes; // single-recipe auto machines (e.g. Laminator)
+    }
+    if(!allowedRecipes.some(r=>itemType in r.in)) return false; // wrong item for what's selectable
+    const bufTotal = Object.values(nb.inputBuffer).reduce((a,b)=>a+b,0);
+    if(bufTotal >= nb.maxItems) return false;
+    nb.inputBuffer[itemType] = (nb.inputBuffer[itemType]||0) + 1;
+    return true;
+  }
+  if(nb.def.kind==='burner'){
+    const cell = [nb.ax, nb.ay]; // top-left tile only
+    if(targetCell[0]!==cell[0] || targetCell[1]!==cell[1]) return false;
+    if(!(itemType in BURNER_FUELS)) return false;
+    if(nb.itemQueue.length >= nb.maxItems) return false;
+    nb.itemQueue.push(itemType);
+    return true;
+  }
+  if(nb.def.kind==='pipe'){
+    if(nb.forceLock && (!fromObj || !nb.lockedFromIds.has(fromObj.id))) return false;
+    nb.itemQueue.push(itemType);
+    return true;
+  }
+  return false;
+}
+
+function tryPush(obj){
+  if(obj.itemQueue.length===0) return;
+  const itemType = obj.itemQueue[0];
+  const cands = outputCandidates(obj);
+  for(const c of cands){
+    const nb = grid.get(key(c.cell[0], c.cell[1]));
+    if(!nb || nb===obj) continue;
+    const fromDir = opp(c.dir);
+    if(nb.def.kind==='processor' || nb.def.kind==='combiner' || nb.def.kind==='shaper' || nb.def.kind==='burner' || nb.def.inputPorts){
+      if(pushInto(nb, c.cell, itemType, obj)){ obj.itemQueue.shift(); if(obj.def.kind==='pipe') obj.outRR++; return; }
+      continue;
+    }
+    if(acceptsInput(nb, fromDir, itemType, obj)){
+      if(pushInto(nb, c.cell, itemType, obj)){ obj.itemQueue.shift(); if(obj.def.kind==='pipe') obj.outRR++; return; }
+    }
+  }
+  if(obj.def.kind==='pipe' && pipeOutputsAbs(obj).length>1) obj.outRR++; // keep alternating even on failed attempts
+}
+
+/* ============================== STARTER GARAGE ============================== */
+function ensureStarterGarage(){
+  placeObject('garage', 2, 2, 0);
+  garagesPlaced = 1;
+}
+
+/* ============================== INPUT ============================== */
+addEventListener('mousemove', e=>{
+  mouseScreen.x = e.clientX; mouseScreen.y = e.clientY;
+  mouseInWindow = true;
+});
+addEventListener('mouseleave', ()=> mouseInWindow=false);
+
+canvas.addEventListener('click', e=>{
+  const [wx,wy] = screenToWorld(e.clientX, e.clientY);
+  const [cx,cy] = worldToCell(wx,wy);
+
+  if(tool==='build' && selectedPlaceable){
+    const def = PLACEABLES[selectedPlaceable];
+    const free = (selectedPlaceable==='garage' && garagesPlaced===0);
+    if(!free && money < def.cost){ showMsg("Not enough money"); return; }
+    if(!canPlace(selectedPlaceable, cx, cy, ghostRotation)){ showMsg("Can't place there"); return; }
+    money -= free ? 0 : def.cost;
+    placeObject(selectedPlaceable, cx, cy, ghostRotation, ghostPipeShape, ghostFlipped);
+    if(selectedPlaceable==='garage') garagesPlaced++;
+  } else if(tool==='select'){
+    const obj = grid.get(key(cx,cy));
+    if(obj && obj.def.kind==='storage'){
+      obj.active = !obj.active;
+      showMsg(obj.active ? 'Storage output ON' : 'Storage output OFF');
+    } else if(obj && obj.def.manualRecipe){
+      openRecipeSelect(obj);
+    }
+  } else if(tool==='wire'){
+    const obj = grid.get(key(cx,cy));
+    if(!obj){ wirePending=null; return; }
+    if(!wirePending){
+      if(obj.def.kind==='solar' || obj.def.kind==='burner'){ wirePending = obj; showMsg('Source selected — now click a machine to power'); }
+      else showMsg('Select a power source (Solar Panel or Burner) first');
+    } else {
+      if(obj===wirePending){ wirePending=null; return; }
+      const isPowerTarget = obj.def.kind==='drill' || obj.def.kind==='processor' || obj.def.kind==='farm' || obj.def.kind==='combiner' || obj.def.kind==='shaper' || obj.def.inputPorts;
+      if(isPowerTarget){
+        wires.push({from:wirePending, to:obj});
+        showMsg('Wired!');
+      } else {
+        showMsg('Target must be a machine that needs power');
+      }
+      wirePending = null;
+    }
+  } else if(tool==='demolish'){
+    const obj = grid.get(key(cx,cy));
+    if(obj){
+      if(obj.def.kind==='garage' && garagesPlaced<=1){ showMsg("Can't demolish your only garage"); return; }
+      removeObject(obj);
+      if(obj.def.kind==='garage') garagesPlaced--;
+      showMsg('Removed');
+    }
+  } else if(tool==='glove'){
+    if(!heldObject){
+      const obj = grid.get(key(cx,cy));
+      if(!obj){ return; }
+      liftObject(obj);
+      showMsg('Picked up — click a free spot to place it');
+    } else {
+      if(dropHeldAt(cx,cy)){
+        showMsg('Moved');
+      } else {
+        showMsg('Space occupied — try another spot');
+      }
+    }
+  } else if(tool==='connectors'){
+    const obj = grid.get(key(cx,cy));
+    if(!obj || obj.def.kind==='garage'){ connSelected=null; return; }
+    if(!connSelected){
+      // try to disconnect the first still-active outbound link from this tile
+      const cands = rawOutputCandidates(obj);
+      let disconnected = false;
+      for(const c of cands){
+        const ck = key(c.cell[0], c.cell[1]);
+        if(obj.blockedLinks.has(ck)) continue;
+        const nb = grid.get(ck);
+        if(!nb || nb===obj) continue;
+        obj.blockedLinks.add(ck);
+        disconnected = true;
+        showMsg('Disconnected');
+        break;
+      }
+      if(!disconnected){
+        connSelected = obj;
+        showMsg('Now click a touching pipe/machine to connect to');
+      }
+    } else {
+      if(obj===connSelected){ connSelected=null; return; }
+      const cands = rawOutputCandidates(connSelected);
+      const match = cands.find(c=>{
+        const nb = grid.get(key(c.cell[0], c.cell[1]));
+        return nb===obj;
+      });
+      if(match){
+        connSelected.blockedLinks.delete(key(match.cell[0], match.cell[1]));
+        showMsg('Connected!');
+      } else {
+        showMsg("Not touching — connectors only work between adjacent input/output tiles");
+      }
+      connSelected = null;
+    }
+  }
+});
+
+canvas.addEventListener('dblclick', e=>{
+  if(tool!=='connectors') return;
+  const [wx,wy] = screenToWorld(e.clientX, e.clientY);
+  const [cx,cy] = worldToCell(wx,wy);
+  const obj = grid.get(key(cx,cy));
+  if(!obj || obj.def.kind!=='pipe') return;
+  obj.forceLock = !obj.forceLock;
+  if(obj.forceLock){
+    obj.lockedFromIds = currentInputSources(obj);
+    showMsg(obj.lockedFromIds.size ? 'Force Lock ON — only accepting from current input' : 'Force Lock ON — no input yet, will accept nothing until unlocked');
+  } else {
+    obj.lockedFromIds = new Set();
+    showMsg('Force Lock OFF');
+  }
+});
+
+const keysHeld = {w:false, a:false, s:false, d:false};
+addEventListener('keydown', e=>{
+  if(!gameStarted) return;
+  const k = e.key.toLowerCase();
+  if(k==='w'||k==='a'||k==='s'||k==='d') keysHeld[k] = true;
+  if(k==='0') setTool('select');
+  else if(k==='1') setTool('build');
+  else if(k==='2') setTool('wire');
+  else if(k==='3') setTool('demolish');
+  else if(k==='4') toggleRecipesPanel();
+  else if(k==='5') setTool('connectors');
+  else if(k==='z') setTool('glove');
+  else if(k==='escape'){ setTool('select'); closeRecipeSelect(); }
+  else if(k==='r'){
+    if(tool==='glove' && heldObject){
+      if(heldObject.def.kind==='pipe' || heldObject.def.kind==='drill'){
+        heldObject.rotation = (heldObject.rotation+1)%4;
+        heldObject.cells = cellsFor(heldObject.type, heldObject.rotation);
+        showMsg('Rotated');
+      }
+    } else {
+      ghostRotation = (ghostRotation+1)%4;
+    }
+  }
+  else if(k==='f'){
+    if(tool==='glove' && heldObject){
+      heldObject.flipped = !heldObject.flipped;
+      showMsg(heldObject.flipped ? 'Flipped' : 'Unflipped');
+    } else if(tool==='build' && selectedPlaceable){
+      ghostFlipped = !ghostFlipped;
+      showMsg(ghostFlipped ? 'Flipped' : 'Unflipped');
+    }
+  }
+  else if(k==='u'){
+    const i = PIPE_SHAPES.indexOf(ghostPipeShape);
+    ghostPipeShape = PIPE_SHAPES[(i+1)%PIPE_SHAPES.length];
+    showMsg('Pipe shape: '+ghostPipeShape);
+  }
+});
+addEventListener('keyup', e=>{
+  const k = e.key.toLowerCase();
+  if(k==='w'||k==='a'||k==='s'||k==='d') keysHeld[k] = false;
+});
+addEventListener('blur', ()=>{ keysHeld.w=keysHeld.a=keysHeld.s=keysHeld.d=false; });
+
+function setTool(t){
+  if(heldObject && t!=='glove') cancelHeld();
+  tool = t;
+  document.querySelectorAll('.tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.tool===t));
+  document.getElementById('buildPanel').classList.toggle('show', t==='build');
+  closeRecipesPanel();
+  wirePending = null;
+  connSelected = null;
+}
+document.querySelectorAll('.tool-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    if(b.dataset.tool==='recipes'){ toggleRecipesPanel(); return; }
+    setTool(b.dataset.tool);
+  });
+});
+
+/* Build palette — single horizontal row + slider (instead of a wrapping grid) */
+const buildTrack = document.getElementById('buildTrack');
+const buildViewport = document.getElementById('buildViewport');
+const buildSlider = document.getElementById('buildSlider');
+BUILD_ORDER.forEach(k=>{
+  const def = PLACEABLES[k];
+  const card = document.createElement('div');
+  card.className = 'item-card';
+  card.innerHTML = `<div class="swatch"></div>
+    <div class="name">${def.name}</div>
+    <div class="cost">${def.w}x${def.h} • $${def.cost}</div>`;
+  const swatch = card.querySelector('.swatch');
+  const mini = document.createElement('canvas');
+  mini.width = 106; mini.height = 44;
+  mini.style.width='100%'; mini.style.height='100%'; mini.style.borderRadius='6px';
+  swatch.appendChild(mini);
+  const mg = mini.getContext('2d');
+  mg.fillStyle = '#12180f'; mg.fillRect(0,0,106,44);
+  drawSwatchIcon(mg, k, def);
+  card.addEventListener('click', ()=>{
+    selectedPlaceable = k;
+    ghostRotation = 0;
+    ghostFlipped = false;
+    document.querySelectorAll('.item-card').forEach(c=>c.classList.remove('sel'));
+    card.classList.add('sel');
+  });
+  buildTrack.appendChild(card);
+});
+
+function setupBuildSlider(){
+  const cardW = 106, gap = 8;
+  const trackW = BUILD_ORDER.length*(cardW+gap) - gap;
+  const viewportW = buildViewport.clientWidth || Math.min(window.innerWidth*0.94, 760)-24;
+  const maxScroll = Math.max(0, trackW - viewportW);
+  buildSlider.max = Math.ceil(maxScroll);
+  buildSlider.value = 0;
+  buildSlider.parentElement.style.display = maxScroll>0 ? 'flex' : 'none';
+  buildTrack.style.transform = 'translateX(0px)';
+}
+buildSlider.addEventListener('input', ()=>{
+  buildTrack.style.transform = `translateX(-${buildSlider.value}px)`;
+});
+setTimeout(setupBuildSlider, 0);
+addEventListener('resize', ()=> setTimeout(setupBuildSlider, 0));
+
+/* ============================== RECIPES BROWSER ============================== */
+let recipesPanelOpen = false;
+let expandedRecipeItem = null;
+const recipesPanelEl = document.getElementById('recipesPanel');
+const recipesListEl = document.getElementById('recipesList');
+document.getElementById('recipesClose').addEventListener('click', closeRecipesPanel);
+
+function toggleRecipesPanel(){
+  recipesPanelOpen = !recipesPanelOpen;
+  recipesPanelEl.classList.toggle('show', recipesPanelOpen);
+  document.querySelectorAll('.tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.tool==='recipes' && recipesPanelOpen));
+  if(recipesPanelOpen) renderRecipesPanel();
+}
+function closeRecipesPanel(){
+  recipesPanelOpen = false;
+  recipesPanelEl.classList.remove('show');
+  document.querySelectorAll('.tool-btn[data-tool="recipes"]').forEach(b=>b.classList.remove('active'));
+}
+function itemIconHtml(itemKey){
+  const item = ITEMS[itemKey];
+  if(!item) return '';
+  return `<span class="item-ico" style="background:${item.color}"></span>`;
+}
+function recipeLineHtml(machine, r){
+  const inStr = Object.keys(r.in).map(k=>`${r.in[k]}x ${itemIconHtml(k)}${ITEMS[k].name}`).join(' + ');
+  const outStr = Object.keys(r.out).map(k=>`${r.out[k]}x ${itemIconHtml(k)}${ITEMS[k].name}`).join(' + ');
+  return `${inStr} <span style="color:var(--dim)">via</span> <b>${machine}</b> → ${outStr}`;
+}
+function renderRecipesPanel(){
+  recipesListEl.innerHTML = '';
+  if(discoveredItems.size===0){
+    recipesListEl.innerHTML = `<div id="recipesEmpty">Nothing made yet — produce or craft an item to see it here.</div>`;
+    return;
+  }
+  for(const itemKey of discoveredItems){
+    const item = ITEMS[itemKey];
+    if(!item) continue;
+    const row = document.createElement('div');
+    row.className = 'rp-row' + (expandedRecipeItem===itemKey ? ' open' : '');
+    const madeBy = (RECIPE_INDEX.producedBy[itemKey]||[]).map(p=>
+      p.mined ? `Mined / produced automatically by <b>${p.machine}</b>`
+              : recipeLineHtml(p.machine, p.recipe)
+    ).join('<div class="rp-line"></div>');
+    const becomes = (RECIPE_INDEX.usedIn[itemKey]||[]).map(u=>{
+      const outStr = Object.keys(u.recipe.out).map(k=>`${u.recipe.out[k]}x ${itemIconHtml(k)}${ITEMS[k].name}`).join(' + ');
+      return `${itemIconHtml(itemKey)}${item.name} + <b>${u.machine}</b> → ${outStr}`;
+    }).join('<div class="rp-line"></div>');
+    row.innerHTML = `
+      <div class="rp-row-head">
+        <span>${itemIconHtml(itemKey)}${item.name}</span>
+        <span class="rp-price">$${item.price}</span>
+      </div>
+      <div class="rp-detail">
+        <div><b>Made by:</b></div>
+        <div class="rp-line">${madeBy || 'Not craftable — base resource'}</div>
+        <div style="margin-top:6px"><b>Can become:</b></div>
+        <div class="rp-line">${becomes || 'Nothing yet — sell it at the Garage instead'}</div>
+      </div>`;
+    row.addEventListener('click', ()=>{
+      expandedRecipeItem = (expandedRecipeItem===itemKey) ? null : itemKey;
+      renderRecipesPanel();
+    });
+    recipesListEl.appendChild(row);
+  }
+}
+
+/* ============================== MACHINE RECIPE SELECT UI ============================== */
+let recipeSelectTarget = null;
+const recipeSelectPanelEl = document.getElementById('recipeSelectPanel');
+const rsOptionsEl = document.getElementById('rsOptions');
+document.getElementById('rsClose').addEventListener('click', closeRecipeSelect);
+
+function openRecipeSelect(obj){
+  recipeSelectTarget = obj;
+  document.getElementById('rsTitle').textContent = obj.def.name + ' — choose recipe';
+  rsOptionsEl.innerHTML = '';
+  obj.def.recipes.forEach((r, idx)=>{
+    const inStr = Object.keys(r.in).map(k=>`${r.in[k]}x ${itemIconHtml(k)}${ITEMS[k].name}`).join(' + ');
+    const outStr = Object.keys(r.out).map(k=>`${r.out[k]}x ${itemIconHtml(k)}${ITEMS[k].name}`).join(' + ');
+    const outStrPlain = Object.keys(r.out).map(k=>`${r.out[k]}x ${ITEMS[k].name}`).join(' + ');
+    const totalValue = Object.keys(r.out).reduce((s,k)=>s+r.out[k]*ITEMS[k].price,0);
+    const opt = document.createElement('div');
+    opt.className = 'rs-option' + (obj.selectedRecipe===idx ? ' sel' : '');
+    opt.innerHTML = `${inStr} → <span class="rs-out">${outStr}</span> <span style="color:var(--dim)">($${totalValue})</span>`;
+    opt.addEventListener('click', ()=>{
+      obj.selectedRecipe = idx;
+      obj.inputBuffer = {}; // switching recipes clears any half-collected mismatched inputs
+      showMsg(obj.def.name + ' set to: ' + outStrPlain);
+      openRecipeSelect(obj); // re-render to update selection highlight
+    });
+    rsOptionsEl.appendChild(opt);
+  });
+  recipeSelectPanelEl.classList.add('show');
+}
+function closeRecipeSelect(){
+  recipeSelectPanelEl.classList.remove('show');
+  recipeSelectTarget = null;
+}
+
+function drawSwatchIcon(g, k, def){
+  if(def.kind==='pipe'){
+    g.fillStyle = def.color;
+    roundRectOn(g, 31, 4, 44, 36, 6); g.fill();
+    g.strokeStyle='#00000055'; roundRectOn(g,31,4,44,36,6); g.stroke();
+    drawPipeLinesOn(g, 53, 22, 15, [2], [0], 'straight', def.category, 7);
+  } else if(k==='solar'){ iconSolar(g, 23, 2, 60, 40); }
+  else if(def.kind==='drill'){ iconDrillTex(g, 3, 4, 100, 36, def.tex); }
+  else if(k==='garage'){ iconTruck(g, 3, 2, 100, 40); }
+  else if(def.kind==='processor'){ iconProcessor(g, 3, 2, 100, 40, k, false); }
+  else if(def.kind==='farm'){ iconTreeFarm(g, 3, 2, 100, 40, false); }
+  else if(def.kind==='storage'){ iconStorage(g, 3, 2, 100, 40, false, false); }
+  else if(def.kind==='burner'){ iconBurner(g, 3, 2, 100, 40, false); }
+  else if(def.inputPorts){ iconMultiPort(g, 3, 2, 100, 40, def, false); }
+}
+
+/* ============================== SIMULATION ============================== */
+// wattage a single power *source* (solar or burner) currently offers to each wire coming from it
+function sourceCurrentWatts(obj){
+  if(!obj) return 0;
+  if(obj.def.kind==='solar') return SOLAR_WATTS;
+  if(obj.def.kind==='burner') return obj.storedWatts || 0;
+  return 0;
+}
+function computeSupplied(obj){
+  return wires.filter(w=>w.to===obj).reduce((sum,w)=>sum+sourceCurrentWatts(w.from), 0);
+}
+
+function simulate(now){
+  // power pass (consumers) — anything with a recipe list, plus drills & farms, draws power
+  for(const obj of objects){
+    const k = obj.def.kind;
+    if(k==='drill' || k==='farm' || obj.def.recipes){
+      obj.suppliedWatts = computeSupplied(obj);
+      if(obj.def.minWatts){
+        obj.powered = obj.suppliedWatts >= obj.def.minWatts;
+      } else {
+        obj.powered = obj.suppliedWatts >= obj.def.watts;
+      }
+    }
+  }
+
+  // burner: burns queued fuel one item at a time, producing watts for the fuel's duration.
+  // Generated wattage lingers in storedWatts for up to 3s after the burn ends (then decays)
+  // so brief gaps between fuel items don't instantly cut power to wired machines.
+  for(const obj of objects){
+    if(obj.def.kind!=='burner') continue;
+    if(obj.burnEndAt!==null && now>=obj.burnEndAt){
+      obj.burnEndAt = null; obj.burnWatts = 0;
+      obj.storedDecayAt = now + 3000;
+    }
+    if(obj.burnEndAt===null && obj.itemQueue.length>0){
+      const fuel = obj.itemQueue.shift();
+      const f = BURNER_FUELS[fuel];
+      obj.burnWatts = f.watts;
+      obj.burnEndAt = now + f.ms;
+      obj.storedDecayAt = null;
+    }
+    if(obj.burnEndAt!==null){
+      obj.storedWatts = obj.burnWatts;
+    } else if(obj.storedDecayAt!==null && now>=obj.storedDecayAt){
+      obj.storedWatts = 0;
+      obj.storedDecayAt = null;
+    }
+  }
+
+  // drill / tree farm production (both just auto-produce an item on a timer while powered)
+  for(const obj of objects){
+    if(obj.def.kind!=='drill' && obj.def.kind!=='farm') continue;
+    if(!obj.powered) continue;
+    if(obj.itemQueue.length >= obj.maxItems) continue;
+    if(now - obj.lastProd >= obj.def.prodMs){
+      obj.itemQueue.push(obj.def.produces);
+      obj.lastProd = now;
+      discoverItem(obj.def.produces);
+    }
+  }
+
+  // any recipe-based machine's production: auto-picks the first satisfiable recipe unless
+  // manualRecipe is set (combiner, shaper, foundry, core combiner), in which case only the
+  // recipe chosen via the select UI ever runs.
+  for(const obj of objects){
+    if(!obj.def.recipes) continue;
+    if(obj.processingDoneAt!==null){
+      if(now >= obj.processingDoneAt){
+        const out = obj.processingRecipe.out;
+        for(const itype in out){
+          for(let n=0;n<out[itype];n++){ obj.itemQueue.push(itype); discoverItem(itype); }
+        }
+        obj.processingDoneAt = null;
+        obj.processingRecipe = null;
+      }
+      continue;
+    }
+    if(!obj.powered) continue;
+    if(obj.itemQueue.length >= obj.maxItems) continue;
+    const recipe = findActiveRecipe(obj);
+    if(!recipe) continue;
+    if(!Object.keys(recipe.in).every(it => (obj.inputBuffer[it]||0) >= recipe.in[it])) continue;
+    for(const it in recipe.in) obj.inputBuffer[it] -= recipe.in[it];
+    let speed = 1;
+    if(obj.def.minWatts){
+      speed = obj.suppliedWatts >= obj.def.watts ? 1 : 0.75;
+    }
+    obj.processingRecipe = recipe;
+    obj.processingDoneAt = now + (recipe.batchMs || obj.def.batchMs) / speed;
+  }
+
+  // transfer tick (pipes, drill buffers, farm/storage/recipe-machine outputs)
+  for(const obj of objects){
+    const k = obj.def.kind;
+    if(k!=='pipe' && k!=='drill' && k!=='farm' && k!=='storage' && !obj.def.recipes) continue;
+    if(now - obj.lastTransfer < PIPE_TRANSFER_MS) continue;
+    obj.lastTransfer = now;
+    tryPush(obj);
+  }
+}
+
+/* ============================== ICONS ============================== */
+function iconSolar(g, x, y, w, h){
+  g.fillStyle = '#1c2b52';
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.14); g.fill();
+  g.strokeStyle = '#00000055'; g.lineWidth = 1.5;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.14); g.stroke();
+  const pad = w*0.12;
+  const gx0 = x+pad, gy0 = y+pad, gw = w-pad*2, gh = h-pad*2;
+  g.fillStyle = '#3a5ab0';
+  g.fillRect(gx0, gy0, gw, gh);
+  g.strokeStyle = '#0d1730';
+  g.lineWidth = Math.max(1, w*0.03);
+  for(let i=1;i<3;i++){ const lx=gx0+gw*i/3; g.beginPath(); g.moveTo(lx,gy0); g.lineTo(lx,gy0+gh); g.stroke(); }
+  for(let j=1;j<3;j++){ const ly=gy0+gh*j/3; g.beginPath(); g.moveTo(gx0,ly); g.lineTo(gx0+gw,ly); g.stroke(); }
+  g.strokeRect(gx0,gy0,gw,gh);
+  g.fillStyle = '#ffffff33';
+  g.beginPath(); g.moveTo(gx0,gy0); g.lineTo(gx0+gw*0.4,gy0); g.lineTo(gx0,gy0+gh*0.4); g.closePath(); g.fill();
+}
+
+function iconDrillTex(g, x, y, w, h, tex){
+  g.fillStyle = '#6b6f76';
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.12); g.fill();
+  g.strokeStyle = '#00000055'; g.lineWidth = 1.5;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.12); g.stroke();
+  g.save();
+  g.beginPath(); roundRectOn(g, x, y, w, h, Math.min(w,h)*0.12); g.clip();
+  const chunkColor = tex==='coal' ? '#161616' : tex==='copper' ? '#d9752e' : tex==='water' ? '#4fa3d9' : tex==='gold' ? '#e6c235' : '#4a4d53';
+  g.fillStyle = chunkColor;
+  const n = Math.max(3, Math.round(w/14));
+  for(let i=0;i<n;i++){
+    const bx = x + (i*17 + (i%2)*6) % (w+10) - 4;
+    const by = y + h*0.25 + ((i*13)%Math.max(1,h*0.5));
+    const s = Math.min(w,h)*0.22;
+    g.beginPath();
+    g.moveTo(bx,by); g.lineTo(bx+s*0.8,by-s*0.3); g.lineTo(bx+s*1.1,by+s*0.5); g.lineTo(bx+s*0.3,by+s*0.7);
+    g.closePath(); g.fill();
+  }
+  g.restore();
+  g.fillStyle = '#2c2e32';
+  g.fillRect(x+w*0.42, y+h*0.12, w*0.16, h*0.76);
+  for(let k=0;k<4;k++){
+    g.fillStyle = '#8d9096';
+    g.fillRect(x+w*0.42, y+h*0.16+k*(h*0.68/4), w*0.16, h*0.06);
+  }
+}
+
+function iconTruck(g, x, y, w, h){
+  g.fillStyle = '#5a4a30';
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.fill();
+  g.strokeStyle='#00000055'; g.lineWidth=1.5;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.stroke();
+  g.fillStyle = '#463a26';
+  g.fillRect(x+w*0.06, y+h*0.62, w*0.88, h*0.3);
+  const tw = w*0.5, th = h*0.28;
+  const tx = x+w*0.16, ty = y+h*0.34;
+  g.fillStyle = '#d8d8d8'; g.fillRect(tx, ty, tw, th);
+  g.strokeStyle = '#00000066'; g.lineWidth=1; g.strokeRect(tx, ty, tw, th);
+  const cw = w*0.22, ch = th*0.9;
+  const cx = tx+tw, cy = ty+th-ch;
+  g.fillStyle = '#c0392b'; g.fillRect(cx, cy, cw, ch);
+  g.fillStyle = '#a8e0ee'; g.fillRect(cx+cw*0.25, cy+ch*0.15, cw*0.5, ch*0.4);
+  g.fillStyle = '#1b1b1b';
+  const wr = Math.min(w,h)*0.07;
+  g.beginPath(); g.arc(tx+tw*0.25, ty+th+wr*0.4, wr,0,7); g.fill();
+  g.beginPath(); g.arc(tx+tw*0.8, ty+th+wr*0.4, wr,0,7); g.fill();
+  g.beginPath(); g.arc(cx+cw*0.55, ty+th+wr*0.4, wr,0,7); g.fill();
+}
+
+function iconProcessor(g, x, y, w, h, kind, flipped){
+  const bodyColor = PLACEABLES[kind].color;
+  g.fillStyle = bodyColor;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.fill();
+  g.strokeStyle='#00000066'; g.lineWidth=1.5;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.stroke();
+  const inX = flipped ? x+w*0.84 : x+w*0.16;
+  const outX = flipped ? x+w*0.16 : x+w*0.84;
+  // input marker (blue, top corner)
+  g.fillStyle = INPUT_COLOR;
+  g.beginPath(); g.arc(inX, y+h*0.2, Math.min(w,h)*0.08, 0, 7); g.fill();
+  // output marker (red, bottom corner)
+  g.fillStyle = OUTPUT_COLOR;
+  g.beginPath(); g.arc(outX, y+h*0.8, Math.min(w,h)*0.08, 0, 7); g.fill();
+  // body glyph: simple furnace/molder/compressor motif
+  g.strokeStyle = '#00000055'; g.lineWidth = Math.min(w,h)*0.045;
+  if(kind==='furnace'){
+    g.strokeRect(x+w*0.32, y+h*0.28, w*0.36, h*0.44);
+    g.fillStyle = '#ff8c3d55';
+    g.fillRect(x+w*0.36, y+h*0.5, w*0.28, h*0.18);
+  } else if(kind==='molder'){
+    g.beginPath(); g.moveTo(x+w*0.34,y+h*0.32); g.lineTo(x+w*0.66,y+h*0.32); g.lineTo(x+w*0.58,y+h*0.7); g.lineTo(x+w*0.42,y+h*0.7); g.closePath(); g.stroke();
+  } else {
+    g.strokeRect(x+w*0.3,y+h*0.3,w*0.4,h*0.16);
+    g.strokeRect(x+w*0.3,y+h*0.54,w*0.4,h*0.16);
+  }
+}
+
+function iconTreeFarm(g, x, y, w, h, powered){
+  g.fillStyle = '#5a4326';
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.fill();
+  g.strokeStyle='#00000066'; g.lineWidth=1.5;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.stroke();
+  // green tree drawing
+  const cx = x+w*0.42, groundY = y+h*0.86;
+  g.strokeStyle = '#5a3a1e'; g.lineWidth = Math.max(2,w*0.045);
+  g.beginPath(); g.moveTo(cx, groundY); g.lineTo(cx, y+h*0.42); g.stroke();
+  g.fillStyle = '#3fae3f';
+  g.beginPath(); g.arc(cx, y+h*0.36, w*0.19, 0, 7); g.fill();
+  g.fillStyle = '#2f8c2f';
+  g.beginPath(); g.arc(cx-w*0.10, y+h*0.46, w*0.13, 0, 7); g.fill();
+  g.beginPath(); g.arc(cx+w*0.12, y+h*0.48, w*0.12, 0, 7); g.fill();
+  // input marker (blue, top corner) — farm has no real input, shown for consistency
+  g.fillStyle = INPUT_COLOR;
+  g.beginPath(); g.arc(x+w*0.16, y+h*0.18, Math.min(w,h)*0.06, 0, 7); g.fill();
+  // output marker (red, bottom corner)
+  g.fillStyle = OUTPUT_COLOR;
+  g.beginPath(); g.arc(x+w*0.84, y+h*0.82, Math.min(w,h)*0.08, 0, 7); g.fill();
+}
+
+function iconStorage(g, x, y, w, h, flipped, active){
+  g.fillStyle = '#6a5a3a';
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.fill();
+  g.strokeStyle='#00000066'; g.lineWidth=1.5;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.stroke();
+  // crate slats
+  g.strokeStyle = '#00000044'; g.lineWidth = Math.max(1,w*0.02);
+  for(let i=1;i<3;i++){ const ly=y+h*i/3; g.beginPath(); g.moveTo(x+w*0.1,ly); g.lineTo(x+w*0.9,ly); g.stroke(); }
+  const inX = flipped ? x+w*0.84 : x+w*0.16;
+  const outX = flipped ? x+w*0.16 : x+w*0.84;
+  g.fillStyle = INPUT_COLOR;
+  g.beginPath(); g.arc(inX, y+h*0.2, Math.min(w,h)*0.08, 0, 7); g.fill();
+  g.fillStyle = OUTPUT_COLOR;
+  g.beginPath(); g.arc(outX, y+h*0.8, Math.min(w,h)*0.08, 0, 7); g.fill();
+  // activity light
+  g.fillStyle = active ? '#5cc98a' : '#666';
+  g.beginPath(); g.arc(x+w*0.5, y+h*0.12, Math.min(w,h)*0.06, 0, 7); g.fill();
+}
+
+function iconBurner(g, x, y, w, h, burning){
+  g.fillStyle = '#3a2a1c';
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.fill();
+  g.strokeStyle='#00000066'; g.lineWidth=1.5;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.stroke();
+  // flame glyph — brighter/larger while actively burning
+  const fx = x+w*0.5, fy = y+h*0.58;
+  g.fillStyle = burning ? '#ff8a3d' : '#7a4a2a';
+  g.beginPath();
+  g.moveTo(fx, fy-h*0.28);
+  g.quadraticCurveTo(fx+w*0.16, fy-h*0.05, fx+w*0.08, fy+h*0.14);
+  g.quadraticCurveTo(fx+w*0.02, fy+h*0.22, fx, fy+h*0.14);
+  g.quadraticCurveTo(fx-w*0.1, fy+h*0.06, fx-w*0.05, fy-h*0.08);
+  g.closePath(); g.fill();
+  if(burning){ g.fillStyle='#ffe58a'; g.beginPath(); g.arc(fx, fy+h*0.02, w*0.05, 0, 7); g.fill(); }
+  // input marker (blue, top-left — always fixed, no flip)
+  g.fillStyle = INPUT_COLOR;
+  g.beginPath(); g.arc(x+w*0.16, y+h*0.2, Math.min(w,h)*0.08, 0, 7); g.fill();
+}
+
+function iconMultiPort(g, x, y, w, h, def, flipped){
+  g.fillStyle = def.color;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.fill();
+  g.strokeStyle='#00000066'; g.lineWidth=1.5;
+  roundRectOn(g, x, y, w, h, Math.min(w,h)*0.1); g.stroke();
+  const wide = def.w >= def.h;
+  const mapPt = (dx,dy)=>{
+    let mdx=dx, mdy=dy;
+    if(flipped){ if(wide) mdx = def.w-1-dx; else mdy = def.h-1-dy; }
+    return [x + (mdx+0.5)/def.w*w, y + (mdy+0.5)/def.h*h];
+  };
+  g.fillStyle = INPUT_COLOR;
+  for(const [dx,dy] of def.inputPorts){ const [px,py]=mapPt(dx,dy); g.beginPath(); g.arc(px,py,Math.min(w,h)*0.13,0,7); g.fill(); }
+  g.fillStyle = OUTPUT_COLOR;
+  for(const [dx,dy] of def.outputPorts){ const [px,py]=mapPt(dx,dy); g.beginPath(); g.arc(px,py,Math.min(w,h)*0.14,0,7); g.fill(); }
+}
+
+function edgePoint(dir,cx,cy,r){
+  if(dir===0) return [cx+r,cy];
+  if(dir===1) return [cx,cy+r];
+  if(dir===2) return [cx-r,cy];
+  return [cx,cy-r];
+}
+function cornerPoint(dirA,dirB,cx,cy,r){
+  let x = cx, y = cy;
+  if(dirA===0||dirB===0) x = cx+r; else if(dirA===2||dirB===2) x = cx-r;
+  if(dirA===1||dirB===1) y = cy+r; else if(dirA===3||dirB===3) y = cy-r;
+  return [x,y];
+}
+function shapeColor(shape, category){
+  if(shape==='t1') return '#ffe14d';       // yellow: 2 inputs merge -> 1 output
+  if(shape==='t2') return '#5cd6ff';       // cyan: 1 input splits -> 2 outputs
+  if(shape==='cross1') return '#ffffff';   // white: 3 inputs merge -> 1 output
+  return category==='fluid' ? '#8fd6ff' : '#e7ecef';
+}
+function drawPipeLinesOn(g, cx, cy, r, ins, outs, shape, category, lineW){
+  const color = shapeColor(shape, category);
+  g.lineCap = 'round';
+  g.strokeStyle = color;
+  g.lineWidth = lineW;
+  if(shape==='straight'){
+    const [x1,y1]=edgePoint(ins[0],cx,cy,r);
+    const [x2,y2]=edgePoint(outs[0],cx,cy,r);
+    g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+  } else if(shape==='curve'){
+    const [x1,y1]=edgePoint(ins[0],cx,cy,r);
+    const [x2,y2]=edgePoint(outs[0],cx,cy,r);
+    const [ccx,ccy]=cornerPoint(ins[0],outs[0],cx,cy,r);
+    g.beginPath(); g.moveTo(x1,y1); g.quadraticCurveTo(ccx,ccy,x2,y2); g.stroke();
+  } else {
+    const allDirs = ins.concat(outs);
+    for(const d of allDirs){
+      const [ex,ey]=edgePoint(d,cx,cy,r);
+      g.beginPath(); g.moveTo(ex,ey); g.lineTo(cx,cy); g.stroke();
+    }
+  }
+  for(const d of ins){
+    const [ex,ey]=edgePoint(d,cx,cy,r);
+    g.fillStyle = INPUT_COLOR;
+    g.beginPath(); g.arc(ex, ey, lineW*0.45, 0, 7); g.fill();
+  }
+  for(const d of outs){
+    const [ex,ey]=edgePoint(d,cx,cy,r);
+    const dd = DIRS[d];
+    drawArrowOn(g, ex-dd[0]*7, ey-dd[1]*7, d, 13, '#00000066');
+    drawArrowOn(g, ex-dd[0]*7, ey-dd[1]*7, d, 10, OUTPUT_COLOR);
+  }
+}
+function drawPipeShape(obj, sx, sy){
+  const cx = sx+TILE/2, cy = sy+TILE/2, r = TILE/2-5;
+  drawPipeLinesOn(ctx, cx, cy, r, pipeInputsAbs(obj), pipeOutputsAbs(obj), obj.pipeShape, obj.def.category, TILE*0.16);
+}
+
+function roundRectOn(g,x,y,w,h,r){
+  g.beginPath();
+  g.moveTo(x+r,y);
+  g.arcTo(x+w,y,x+w,y+h,r);
+  g.arcTo(x+w,y+h,x,y+h,r);
+  g.arcTo(x,y+h,x,y,r);
+  g.arcTo(x,y,x+w,y,r);
+  g.closePath();
+}
+function roundRect(x,y,w,h,r){ roundRectOn(ctx,x,y,w,h,r); }
+
+function drawArrowOn(g,cx,cy,dirIdx,size,color){
+  const d = DIRS[dirIdx];
+  const ang = Math.atan2(d[1],d[0]);
+  g.save(); g.translate(cx,cy); g.rotate(ang);
+  g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(size*0.5,0); g.lineTo(-size*0.35,-size*0.35); g.lineTo(-size*0.35, size*0.35);
+  g.closePath(); g.fill();
+  g.restore();
+}
+function drawArrow(cx,cy,dirIdx,size,color){ drawArrowOn(ctx,cx,cy,dirIdx,size,color); }
+
+/* ============================== RENDER ============================== */
+function worldPointOnScreen(wx,wy){ return [wx-cam.x, wy-cam.y]; }
+
+function draw(){
+  ctx.fillStyle = '#3f7d3f';
+  ctx.fillRect(0,0,W,H);
+
+  const startCol = Math.floor(cam.x/TILE), endCol = Math.ceil((cam.x+W)/TILE);
+  const startRow = Math.floor(cam.y/TILE), endRow = Math.ceil((cam.y+H)/TILE);
+
+  for(let cy=startRow; cy<=endRow; cy++){
+    for(let cx=startCol; cx<=endCol; cx++){
+      const [sx,sy] = worldPointOnScreen(cx*TILE, cy*TILE);
+      ctx.fillStyle = ((cx+cy)%2===0) ? '#3f7d3f' : '#438442';
+      ctx.fillRect(sx,sy,TILE,TILE);
+    }
+  }
+  ctx.strokeStyle = '#00000018'; ctx.lineWidth = 1;
+  for(let cx=startCol; cx<=endCol; cx++){
+    const [sx] = worldPointOnScreen(cx*TILE,0);
+    ctx.beginPath(); ctx.moveTo(sx+0.5,0); ctx.lineTo(sx+0.5,H); ctx.stroke();
+  }
+  for(let cy=startRow; cy<=endRow; cy++){
+    const [,sy] = worldPointOnScreen(0,cy*TILE);
+    ctx.beginPath(); ctx.moveTo(0,sy+0.5); ctx.lineTo(W,sy+0.5); ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#ffe58a'; ctx.lineWidth = 2; ctx.setLineDash([5,4]);
+  for(const w of wires){
+    const [fx,fy] = centerOf(w.from);
+    const [tx,ty] = centerOf(w.to);
+    const [sfx,sfy] = worldPointOnScreen(fx,fy);
+    const [stx,sty] = worldPointOnScreen(tx,ty);
+    ctx.beginPath(); ctx.moveTo(sfx,sfy); ctx.lineTo(stx,sty); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  for(const obj of objects){ if(obj!==heldObject) drawObject(obj); }
+
+  if(tool==='wire' && wirePending){
+    const [cx,cy] = centerOf(wirePending);
+    const [sx,sy] = worldPointOnScreen(cx,cy);
+    ctx.strokeStyle = '#ffe58a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(sx,sy,TILE*0.55,0,7); ctx.stroke();
+  }
+
+  if(tool==='connectors'){
+    for(const obj of objects){
+      if(obj.def.kind==='garage') continue;
+      const cands = rawOutputCandidates(obj);
+      for(const c of cands){
+        const nb = grid.get(key(c.cell[0], c.cell[1]));
+        if(!nb || nb===obj) continue;
+        const blocked = obj.blockedLinks.has(key(c.cell[0], c.cell[1]));
+        const srcCell = [c.cell[0]-DIRS[c.dir][0], c.cell[1]-DIRS[c.dir][1]];
+        const [fx,fy] = worldPointOnScreen(srcCell[0]*TILE+TILE/2, srcCell[1]*TILE+TILE/2);
+        const [tx,ty] = worldPointOnScreen(c.cell[0]*TILE+TILE/2, c.cell[1]*TILE+TILE/2);
+        ctx.strokeStyle = blocked ? '#e0524a' : '#5cc98a';
+        ctx.lineWidth = 3;
+        ctx.setLineDash(blocked ? [5,4] : []);
+        ctx.beginPath(); ctx.moveTo(fx,fy); ctx.lineTo(tx,ty); ctx.stroke();
+        ctx.setLineDash([]);
+        if(blocked){
+          const mx=(fx+tx)/2, my=(fy+ty)/2;
+          ctx.strokeStyle = '#e0524a'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(mx-6,my-6); ctx.lineTo(mx+6,my+6); ctx.moveTo(mx+6,my-6); ctx.lineTo(mx-6,my+6); ctx.stroke();
+        } else {
+          const ang = Math.atan2(ty-fy, tx-fx);
+          ctx.fillStyle = '#5cc98a';
+          ctx.beginPath();
+          ctx.moveTo(tx - Math.cos(ang)*11 + Math.cos(ang+Math.PI/2)*5, ty - Math.sin(ang)*11 + Math.sin(ang+Math.PI/2)*5);
+          ctx.lineTo(tx - Math.cos(ang)*3, ty - Math.sin(ang)*3);
+          ctx.lineTo(tx - Math.cos(ang)*11 - Math.cos(ang+Math.PI/2)*5, ty - Math.sin(ang)*11 - Math.sin(ang+Math.PI/2)*5);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+      if(obj.forceLock){
+        const [ocx,ocy] = centerOf(obj);
+        const [osx,osy] = worldPointOnScreen(ocx,ocy);
+        ctx.strokeStyle = '#ffd23d'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(osx,osy, TILE*0.42, 0, 7); ctx.stroke();
+      }
+    }
+    if(connSelected){
+      const [ccx,ccy] = centerOf(connSelected);
+      const [scx,scy] = worldPointOnScreen(ccx,ccy);
+      ctx.strokeStyle = '#4da3ff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(scx,scy, TILE*0.55, 0, 7); ctx.stroke();
+    }
+  }
+
+  if(tool==='build' && selectedPlaceable && mouseInWindow){
+    const [wx,wy] = screenToWorld(mouseScreen.x, mouseScreen.y);
+    const [cx,cy] = worldToCell(wx,wy);
+    const def = PLACEABLES[selectedPlaceable];
+    const cells = cellsFor(selectedPlaceable, ghostRotation);
+    const ok = canPlace(selectedPlaceable, cx, cy, ghostRotation);
+    drawPlacementGhost(def, cx, cy, cells, ghostRotation, ghostFlipped, ghostPipeShape, ok);
+  }
+
+  if(tool==='glove' && heldObject && mouseInWindow){
+    const [wx,wy] = screenToWorld(mouseScreen.x, mouseScreen.y);
+    const [cx,cy] = worldToCell(wx,wy);
+    const def = heldObject.def;
+    const cells = heldObject.cells;
+    const ok = cells.every(([dx,dy])=>!grid.has(key(cx+dx, cy+dy)));
+    drawPlacementGhost(def, cx, cy, cells, heldObject.rotation, heldObject.flipped, heldObject.pipeShape, ok);
+  }
+}
+
+// shared "ghost" renderer for both the build-mode placement preview and the Glove tool's
+// drag preview — draws the tinted footprint tiles plus the same input/output markers used
+// on the real placed object.
+function drawPlacementGhost(def, cx, cy, cells, rotation, flipped, pipeShape, ok){
+  ctx.globalAlpha = 0.55;
+  for(const [dx,dy] of cells){
+    const [sx,sy] = worldPointOnScreen((cx+dx)*TILE,(cy+dy)*TILE);
+    ctx.fillStyle = ok ? def.color : '#c0392b';
+    ctx.fillRect(sx+2,sy+2,TILE-4,TILE-4);
+  }
+  ctx.globalAlpha = 1;
+  if(def.kind==='pipe'){
+    const [sx,sy] = worldPointOnScreen(cx*TILE, cy*TILE);
+    const ins = SHAPE_DEF[pipeShape].in.map(d=>((flipped?mirrorDir(d):d)+rotation)%4);
+    const outs = SHAPE_DEF[pipeShape].out.map(d=>((flipped?mirrorDir(d):d)+rotation)%4);
+    drawPipeLinesOn(ctx, sx+TILE/2, sy+TILE/2, TILE/2-5, ins, outs, pipeShape, def.category, TILE*0.16);
+  } else if(def.kind==='drill'){
+    const [sx,sy] = worldPointOnScreen(cx*TILE+TILE/2, cy*TILE+TILE/2);
+    drawArrow(sx,sy,rotation,18,OUTPUT_COLOR);
+  } else if(def.kind==='processor' || def.kind==='farm' || def.kind==='storage'){
+    const [sx,sy] = worldPointOnScreen(cx*TILE, cy*TILE);
+    const w = def.w*TILE, h = def.h*TILE;
+    const inX = flipped ? sx+w*0.84 : sx+w*0.16;
+    const outX = flipped ? sx+w*0.16 : sx+w*0.84;
+    ctx.fillStyle = INPUT_COLOR;
+    ctx.beginPath(); ctx.arc(inX, sy+h*0.2, 6, 0, 7); ctx.fill();
+    ctx.fillStyle = OUTPUT_COLOR;
+    ctx.beginPath(); ctx.arc(outX, sy+h*0.8, 6, 0, 7); ctx.fill();
+  } else if(def.inputPorts){
+    const [sx,sy] = worldPointOnScreen(cx*TILE, cy*TILE);
+    const w = def.w*TILE, h = def.h*TILE;
+    const wide = def.w >= def.h;
+    const mapPt = (dx,dy)=>{
+      let mdx=dx, mdy=dy;
+      if(flipped){ if(wide) mdx = def.w-1-dx; else mdy = def.h-1-dy; }
+      return [sx + (mdx+0.5)/def.w*w, sy + (mdy+0.5)/def.h*h];
+    };
+    ctx.fillStyle = INPUT_COLOR;
+    for(const [dx,dy] of def.inputPorts){ const [px,py]=mapPt(dx,dy); ctx.beginPath(); ctx.arc(px,py,6,0,7); ctx.fill(); }
+    ctx.fillStyle = OUTPUT_COLOR;
+    for(const [dx,dy] of def.outputPorts){ const [px,py]=mapPt(dx,dy); ctx.beginPath(); ctx.arc(px,py,6,0,7); ctx.fill(); }
+  } else if(def.kind==='burner'){
+    const [sx,sy] = worldPointOnScreen(cx*TILE, cy*TILE);
+    const w = def.w*TILE, h = def.h*TILE;
+    ctx.fillStyle = INPUT_COLOR;
+    ctx.beginPath(); ctx.arc(sx+w*0.16, sy+h*0.2, 6, 0, 7); ctx.fill();
+  }
+}
+
+function centerOf(obj){
+  const def = obj.def;
+  // drills rotated to a vertical footprint are 1 wide x 2 tall instead of def's 2x1
+  if(def.kind==='drill' && DIRS[obj.rotation][0]===0){
+    return [ (obj.ax+0.5)*TILE, (obj.ay+1)*TILE ];
+  }
+  return [ (obj.ax+def.w/2)*TILE, (obj.ay+def.h/2)*TILE ];
+}
+
+function drawItemDot(sx,sy,itemType,r){
+  ctx.fillStyle = ITEMS[itemType].color;
+  ctx.strokeStyle = ITEMS[itemType].cat==='fluid' ? '#ffffff88' : '#00000055';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(sx,sy,r,0,7); ctx.fill(); ctx.stroke();
+}
+
+function drawObject(obj){
+  const def = obj.def;
+  const [sx,sy] = worldPointOnScreen(obj.ax*TILE, obj.ay*TILE);
+  // drills can be rotated to a vertical (1x2) footprint — swap the icon box to match,
+  // otherwise the sprite keeps drawing as if it were still horizontal (2x1).
+  let w = def.w*TILE, h = def.h*TILE;
+  if(def.kind==='drill' && DIRS[obj.rotation][0]===0){
+    w = def.h*TILE; h = def.w*TILE;
+  }
+
+  if(def.kind==='pipe'){
+    ctx.fillStyle = def.color;
+    ctx.strokeStyle = '#00000055'; ctx.lineWidth = 2;
+    roundRect(sx+2, sy+2, w-4, h-4, 6); ctx.fill(); ctx.stroke();
+  } else if(def.kind==='solar'){
+    iconSolar(ctx, sx+2, sy+2, w-4, h-4);
+  } else if(def.kind==='drill'){
+    iconDrillTex(ctx, sx+2, sy+2, w-4, h-4, def.tex);
+  } else if(def.kind==='garage'){
+    iconTruck(ctx, sx+2, sy+2, w-4, h-4);
+  } else if(def.kind==='processor'){
+    iconProcessor(ctx, sx+2, sy+2, w-4, h-4, obj.type, obj.flipped);
+  } else if(def.kind==='farm'){
+    iconTreeFarm(ctx, sx+2, sy+2, w-4, h-4, obj.powered);
+  } else if(def.kind==='storage'){
+    iconStorage(ctx, sx+2, sy+2, w-4, h-4, obj.flipped, obj.active);
+  } else if(def.kind==='burner'){
+    iconBurner(ctx, sx+2, sy+2, w-4, h-4, obj.burnEndAt!==null);
+  } else if(def.inputPorts){
+    iconMultiPort(ctx, sx+2, sy+2, w-4, h-4, def, obj.flipped);
+  }
+
+  if(def.kind==='pipe'){
+    drawPipeShape(obj, sx, sy);
+    for(let i=0;i<obj.itemQueue.length;i++){
+      drawItemDot(sx+TILE*0.22, sy+TILE*0.22 + i*6, obj.itemQueue[i], 4);
+    }
+  }
+  if(def.kind==='drill'){
+    const d = DIRS[obj.rotation];
+    const front = [obj.ax+d[0]*2, obj.ay+d[1]*2];
+    const [ox,oy] = worldPointOnScreen(front[0]*TILE+TILE/2, front[1]*TILE+TILE/2);
+    drawArrow(ox,oy,obj.rotation,16,OUTPUT_COLOR);
+    ctx.fillStyle = obj.powered ? '#5cc98a' : '#c0392b';
+    ctx.beginPath(); ctx.arc(sx+10, sy+10, 5, 0, 7); ctx.fill();
+    if(obj.itemQueue.length) drawItemDot(ox,oy,obj.itemQueue[0],5);
+  }
+  if(def.kind==='solar'){
+    const linked = wires.some(w=>w.from===obj);
+    ctx.fillStyle = linked ? '#ffe58a' : '#5566aa';
+    ctx.beginPath(); ctx.arc(sx+TILE-9, sy+9, 4, 0, 7); ctx.fill();
+  }
+  if(def.kind==='garage'){
+    ctx.fillStyle='#ffe58a';
+    ctx.beginPath(); ctx.arc(sx+w-10, sy+10, 3.5, 0, 7); ctx.fill();
+  }
+  if(obj.def.recipes){
+    ctx.fillStyle = obj.powered ? '#5cc98a' : '#c0392b';
+    ctx.beginPath(); ctx.arc(sx+10, sy+10, 5, 0, 7); ctx.fill();
+    // processing progress ring
+    if(obj.processingDoneAt){
+      const total = (obj.processingRecipe && obj.processingRecipe.batchMs) || obj.def.batchMs;
+      const remain = obj.processingDoneAt - performance.now();
+      const frac = 1 - Math.max(0,Math.min(1, remain/total));
+      ctx.strokeStyle = '#ffe58a'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(sx+w/2, sy+h/2, Math.min(w,h)*0.18, -Math.PI/2, -Math.PI/2 + frac*Math.PI*2); ctx.stroke();
+    }
+    for(let i=0;i<obj.itemQueue.length;i++){
+      drawItemDot(sx+w-14, sy+h-14 - i*8, obj.itemQueue[i], 4.5);
+    }
+  }
+  if(def.kind==='burner'){
+    ctx.fillStyle = obj.burnEndAt!==null ? '#5cc98a' : '#666';
+    ctx.beginPath(); ctx.arc(sx+10, sy+10, 5, 0, 7); ctx.fill();
+    if(obj.itemQueue.length) drawItemDot(sx+w-14, sy+10, obj.itemQueue[0], 4.5);
+  }
+}
+
+
+/* ============================== MAIN LOOP ============================== */
+let lastFrame = performance.now();
+let incomeHistory = []; // {t, total} samples over the last ~60s, used for the $/min readout
+let lastIncomeSample = 0;
+function loop(now){
+  const dt = Math.min(0.05, (now-lastFrame)/1000);
+  lastFrame = now;
+
+  if(!gameStarted){ requestAnimationFrame(loop); return; }
+
+  let dx=0, dy=0;
+  if(keysHeld.a) dx -= 1; if(keysHeld.d) dx += 1;
+  if(keysHeld.w) dy -= 1; if(keysHeld.s) dy += 1;
+  if(dx!==0 && dy!==0){ dx*=0.7071; dy*=0.7071; } // normalize diagonal speed
+  cam.x += dx*SCROLL_SPEED*dt;
+  cam.y += dy*SCROLL_SPEED*dt;
+
+  simulate(now);
+  draw();
+  updateTooltip();
+
+  document.getElementById('money').textContent = fmtMoney(money);
+  document.getElementById('shipInfo').textContent = totalShipped;
+  let usedW=0, capW=0;
+  for(const o of objects){
+    const k = o.def.kind;
+    if(k==='drill'||k==='farm'||o.def.recipes){ capW += o.def.watts; if(o.powered) usedW += (o.def.minWatts ? (o.suppliedWatts>=o.def.watts?o.def.watts:o.def.minWatts) : o.def.watts); }
+  }
+  document.getElementById('powInfo').textContent = `${usedW} / ${capW} W`;
+
+  if(now - lastIncomeSample > 1000){
+    incomeHistory.push({t:now, total:totalEarned});
+    if(incomeHistory.length > 61) incomeHistory.shift();
+    lastIncomeSample = now;
+  }
+  if(incomeHistory.length >= 2){
+    const oldest = incomeHistory[0], latest = incomeHistory[incomeHistory.length-1];
+    const minutes = (latest.t - oldest.t) / 60000;
+    const rate = minutes > 0 ? Math.round((latest.total - oldest.total) / minutes) : 0;
+    document.getElementById('incomeInfo').textContent = `$${rate}/min`;
+  }
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ============================== TOOLTIP ============================== */
+const tooltipEl = document.getElementById('tooltip');
+function describeCandidate(obj){
+  const cands = outputCandidates(obj);
+  const parts = cands.map(c=>{
+    const nb = grid.get(key(c.cell[0],c.cell[1]));
+    if(!nb || nb===obj) return 'open field';
+    if(nb.def.kind==='pipe') return `${PLACEABLES[nb.type].name} (${nb.itemQueue.length}/${nb.maxItems})`;
+    if(nb.def.kind==='garage') return 'Garage — sells on arrival';
+    if(nb.def.kind==='processor') return `${nb.def.name} input`;
+    if(nb.def.kind==='storage') return `Storage (${nb.itemQueue.length}/${nb.maxItems})`;
+    if(nb.def.inputPorts) return `${nb.def.name} input${nb.def.manualRecipe && nb.selectedRecipe==null ? ' (no recipe set)' : ''}`;
+    if(nb.def.kind==='burner') return 'Burner fuel input';
+    return `${nb.def.name} (can't accept)`;
+  });
+  return parts.join('  /  ');
+}
+function itemListHtml(dict){
+  const keys = Object.keys(dict).filter(k=>dict[k]>0);
+  if(keys.length===0) return '<span style="color:#6a7a6e">empty</span>';
+  return keys.map(k=>`${itemIconHtml(k)} ${ITEMS[k].name} x${dict[k]}`).join('<br>');
+}
+function recipeListHtml(def){
+  return def.recipes.map(r=>{
+    const inStr = Object.keys(r.in).map(k=>`${r.in[k]}x ${itemIconHtml(k)}${ITEMS[k].name}`).join(' + ');
+    const outStr = Object.keys(r.out).map(k=>`${r.out[k]}x ${itemIconHtml(k)}${ITEMS[k].name}`).join(' + ');
+    const timeStr = r.batchMs ? ` (${(r.batchMs/1000).toFixed(1)}s)` : '';
+    return `${inStr} → ${outStr}${timeStr}`;
+  }).join('<br>');
+}
+function updateTooltip(){
+  if(!mouseInWindow || tool==='build'){ tooltipEl.style.display='none'; return; }
+  const [wx,wy] = screenToWorld(mouseScreen.x, mouseScreen.y);
+  const [cx,cy] = worldToCell(wx,wy);
+  const obj = grid.get(key(cx,cy));
+  if(!obj){ tooltipEl.style.display='none'; return; }
+  const def = obj.def;
+  let html = '';
+
+  if(def.kind==='drill'){
+    const rate = obj.powered ? (1/(def.prodMs/1000)).toFixed(2) : '0.00';
+    html = `<div class="t-title">${def.name}</div>
+      <div class="t-row"><span>Status</span><b style="color:${obj.powered?'#5cc98a':'#e06a5a'}">${obj.powered?'Powered':'No power'}</b></div>
+      <div class="t-row"><span>${ITEMS[def.produces].name}/sec</span><b>${rate}</b></div>
+      <div class="t-row"><span>Power draw</span><b>${def.watts} W (${obj.suppliedWatts} W supplied)</b></div>
+      <div class="t-row"><span>Buffer</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
+      <div class="t-row"><span>Output →</span><b style="text-align:right">${describeCandidate(obj)}</b></div>`;
+  } else if(def.kind==='pipe'){
+    html = `<div class="t-title">${def.name} <span style="color:var(--dim);font-weight:400">(${obj.pipeShape})</span></div>
+      <div class="t-row"><span>Carries</span><b>${def.category==='solid'?'Solids only':'Fluids only'}</b></div>
+      <div class="t-row"><span>Holding</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
+      <div style="margin-top:4px">${itemListHtml(obj.itemQueue.reduce((m,it)=>{m[it]=(m[it]||0)+1;return m;},{}))}</div>
+      <div class="t-row" style="margin-top:4px"><span>Rate</span><b>1 / ${(PIPE_TRANSFER_MS/1000).toFixed(2)}s</b></div>
+      <div class="t-row"><span>Output →</span><b style="text-align:right">${describeCandidate(obj)}</b></div>`;
+  } else if(def.kind==='solar'){
+    const links = wires.filter(w=>w.from===obj);
+    html = `<div class="t-title">Solar Panel</div>
+      <div class="t-row"><span>Output</span><b>${SOLAR_WATTS} W</b></div>
+      <div class="t-row"><span>Wired to</span><b>${links.length} machine${links.length===1?'':'s'}</b></div>`;
+  } else if(def.kind==='garage'){
+    html = `<div class="t-title">Garage</div>
+      <div class="t-row"><span>Total shipped</span><b>${totalShipped}</b></div>
+      <div style="margin-top:4px;color:var(--dim)">Sells anything delivered at market price. Accepts input on every side of every tile.</div>`;
+  } else if(def.kind==='farm'){
+    const rate = obj.powered ? (1/(def.prodMs/1000)).toFixed(2) : '0.00';
+    html = `<div class="t-title">${def.name}</div>
+      <div class="t-row"><span>Status</span><b style="color:${obj.powered?'#5cc98a':'#e06a5a'}">${obj.powered?'Powered':'No power'}</b></div>
+      <div class="t-row"><span>${ITEMS[def.produces].name}/sec</span><b>${rate}</b></div>
+      <div class="t-row"><span>Power draw</span><b>${def.watts} W (${obj.suppliedWatts} W supplied)</b></div>
+      <div class="t-row"><span>Buffer</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
+      <div class="t-row"><span>Output →</span><b style="text-align:right">${describeCandidate(obj)}</b></div>`;
+  } else if(def.kind==='storage'){
+    html = `<div class="t-title">${def.name}</div>
+      <div class="t-row"><span>Output</span><b style="color:${obj.active?'#5cc98a':'#e06a5a'}">${obj.active?'ON — click to stop':'OFF — click to start'}</b></div>
+      <div class="t-row"><span>Held</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
+      <div style="margin-top:4px">${itemListHtml(obj.itemQueue.reduce((m,it)=>{m[it]=(m[it]||0)+1;return m;},{}))}</div>
+      <div class="t-row" style="margin-top:4px"><span>Output →</span><b style="text-align:right">${obj.active?describeCandidate(obj):'paused'}</b></div>`;
+  } else if(def.kind==='processor'){
+    const status = !obj.powered ? 'No power' : obj.processingDoneAt ? 'Processing' : 'Idle';
+    const statusColor = !obj.powered ? '#e06a5a' : obj.processingDoneAt ? '#ffe58a' : '#9fb0a4';
+    html = `<div class="t-title">${def.name}</div>
+      <div class="t-row"><span>Status</span><b style="color:${statusColor}">${status}</b></div>
+      <div class="t-row"><span>Power</span><b>${def.watts} W${def.minWatts?` (min ${def.minWatts}W, 75% spd)`:''} — ${obj.suppliedWatts}W supplied</b></div>
+      <div class="t-row"><span>Batch time</span><b>${(def.batchMs/1000).toFixed(2)}s</b></div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Input buffer:</div>
+      <div>${itemListHtml(obj.inputBuffer)}</div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Output buffer (${obj.itemQueue.length}/${obj.maxItems}):</div>
+      <div>${itemListHtml(obj.itemQueue.reduce((m,it)=>{m[it]=(m[it]||0)+1;return m;},{}))}</div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Recipes:</div>
+      <div style="font-size:11px">${recipeListHtml(def)}</div>
+      <div class="t-row" style="margin-top:4px"><span>Output →</span><b style="text-align:right">${describeCandidate(obj)}</b></div>`;
+  } else if(def.inputPorts){
+    const needsPick = def.manualRecipe && obj.selectedRecipe==null;
+    const status = !obj.powered ? 'No power' : needsPick ? 'No recipe selected' : obj.processingDoneAt ? 'Processing' : 'Idle';
+    const statusColor = !obj.powered ? '#e06a5a' : needsPick ? '#e0a95a' : obj.processingDoneAt ? '#ffe58a' : '#9fb0a4';
+    let recipeStr;
+    if(def.manualRecipe){
+      recipeStr = obj.selectedRecipe!=null ? recipeLineHtml(def.name, def.recipes[obj.selectedRecipe]) : 'Click machine (select tool) to choose one';
+    } else {
+      recipeStr = def.recipes.map(r=>recipeLineHtml(def.name, r)).join('<br>');
+    }
+    html = `<div class="t-title">${def.name}</div>
+      <div class="t-row"><span>Status</span><b style="color:${statusColor}">${status}</b></div>
+      <div class="t-row"><span>Power</span><b>${def.watts} W — ${obj.suppliedWatts}W supplied</b></div>
+      <div class="t-row"><span>Batch time</span><b>${(def.batchMs/1000).toFixed(2)}s</b></div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">${def.manualRecipe?'Selected recipe:':'Recipe:'}</div>
+      <div style="font-size:11px">${recipeStr}</div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Input buffer:</div>
+      <div>${itemListHtml(obj.inputBuffer)}</div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Output buffer (${obj.itemQueue.length}/${obj.maxItems}):</div>
+      <div>${itemListHtml(obj.itemQueue.reduce((m,it)=>{m[it]=(m[it]||0)+1;return m;},{}))}</div>
+      <div class="t-row" style="margin-top:4px"><span>Output →</span><b style="text-align:right">${describeCandidate(obj)}</b></div>`;
+  } else if(def.kind==='burner'){
+    const burning = obj.burnEndAt!==null;
+    const secLeft = burning ? Math.max(0,((obj.burnEndAt-performance.now())/1000)).toFixed(1) : '0.0';
+    html = `<div class="t-title">${def.name}</div>
+      <div class="t-row"><span>Status</span><b style="color:${burning?'#5cc98a':'#9fb0a4'}">${burning?'Burning':'Idle'}</b></div>
+      <div class="t-row"><span>Output</span><b>${obj.storedWatts} W</b></div>
+      ${burning?`<div class="t-row"><span>Fuel left</span><b>${secLeft}s</b></div>`:''}
+      <div class="t-row"><span>Fuel queue</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
+      <div style="margin-top:4px">${itemListHtml(obj.itemQueue.reduce((m,it)=>{m[it]=(m[it]||0)+1;return m;},{}))}</div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Fuels: Wood Log (30W/2s), Charcoal (60W/3s), Coal (75W/4s)</div>
+      <div class="t-row" style="margin-top:4px"><span>Wired to</span><b>${wires.filter(w=>w.from===obj).length} machine(s)</b></div>`;
+  }
+  tooltipEl.innerHTML = html;
+  tooltipEl.style.display = 'block';
+  const tw = 230, th = tooltipEl.offsetHeight || 140;
+  let tx = mouseScreen.x + 18, ty = mouseScreen.y + 18;
+  if(tx+tw > W) tx = mouseScreen.x - tw - 18;
+  if(ty+th > H) ty = mouseScreen.y - th - 18;
+  tooltipEl.style.left = tx+'px';
+  tooltipEl.style.top = ty+'px';
+}
+
+/* show the slot menu before anything starts — it opens straight to the sign-in panel,
+   and initFirebaseAuthFlow() swaps it to the slot grid automatically once auth resolves
+   (instantly, with no click needed, if the browser already has a saved session) */
+document.getElementById('slotMenu').classList.add('show');
+showAuthPanel();
+</script>
+</body>
+</html>
