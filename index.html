@@ -1142,7 +1142,7 @@ canvas.addEventListener('click', e=>{
       else showMsg('Select a power source (Solar Panel or Burner) first');
     } else {
       if(obj===wirePending){ wirePending=null; return; }
-      const isPowerTarget = obj.def.kind==='drill' || obj.def.kind==='processor' || obj.def.kind==='farm' || obj.def.kind==='combiner' || obj.def.kind==='shaper' || obj.def.inputPorts;
+      const isPowerTarget = isPowerConsumer(obj.def) || obj.def.kind==='processor' || obj.def.kind==='combiner' || obj.def.kind==='shaper';
       if(isPowerTarget){
         const alreadyWired = wires.some(w=>w.from===wirePending && w.to===obj);
         if(alreadyWired){
@@ -1468,18 +1468,21 @@ function sourceCurrentWatts(obj){
 function computeSupplied(obj){
   return wires.filter(w=>w.to===obj).reduce((sum,w)=>sum+sourceCurrentWatts(w.from), 0);
 }
+function isPowerConsumer(def){
+  if(!def) return false;
+  const k = def.kind;
+  return k==='drill' || k==='farm' || !!def.recipes || !!def.inputPorts || (CUSTOM_KINDS[k] && !!def.watts);
+}
 
 function simulate(now){
   // power pass (consumers) — anything with a recipe list, plus drills & farms, draws power
   for(const obj of objects){
-    const k = obj.def.kind;
-    if(k==='drill' || k==='farm' || obj.def.recipes || (CUSTOM_KINDS[k] && obj.def.watts)){
-      obj.suppliedWatts = computeSupplied(obj);
-      if(obj.def.minWatts){
-        obj.powered = obj.suppliedWatts >= obj.def.minWatts;
-      } else {
-        obj.powered = obj.suppliedWatts >= obj.def.watts;
-      }
+    if(!isPowerConsumer(obj.def)) continue;
+    obj.suppliedWatts = computeSupplied(obj);
+    if(obj.def.minWatts){
+      obj.powered = obj.suppliedWatts >= obj.def.minWatts;
+    } else {
+      obj.powered = obj.suppliedWatts >= obj.def.watts;
     }
   }
 
@@ -2100,8 +2103,9 @@ function loop(now){
   document.getElementById('shipInfo').textContent = totalShipped;
   let usedW=0, capW=0;
   for(const o of objects){
-    const k = o.def.kind;
-    if(k==='drill'||k==='farm'||o.def.recipes){ capW += o.def.watts; if(o.powered) usedW += (o.def.minWatts ? (o.suppliedWatts>=o.def.watts?o.def.watts:o.def.minWatts) : o.def.watts); }
+    if(!isPowerConsumer(o.def)) continue;
+    capW += o.def.watts;
+    if(o.powered) usedW += (o.def.minWatts ? (o.suppliedWatts>=o.def.watts?o.def.watts:o.def.minWatts) : o.def.watts);
   }
   document.getElementById('powInfo').textContent = `${usedW} / ${capW} W`;
 
