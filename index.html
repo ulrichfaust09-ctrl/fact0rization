@@ -139,7 +139,7 @@
   <div class="chip" id="info">
     <div>Income: <b id="incomeInfo">$0/min</b></div>
     <div>Power/sec: <b id="powInfo">0 / 0 W</b></div>
-    <div>Iron shipped: <b id="shipInfo">0</b></div>
+    <div>Items shipped: <b id="shipInfo">0</b></div>
   </div>
 </div>
 
@@ -296,6 +296,8 @@ const ITEMS = {
   copper_coils: {name:'Copper Coils',        price:30,  cat:'solid', color:'#d67f36'},
   water:        {name:'Water',               price:15,  cat:'fluid', color:'#4fa3d9'},
   gold:         {name:'Gold',                price:45,  cat:'solid', color:'#e6c235'},
+  liquid_gold:  {name:'Liquid Gold',         price:65,  cat:'fluid', color:'#f0d040'},
+  gold_ingot:   {name:'Gold Ingot',          price:95,  cat:'solid', color:'#f2c94c'},
   liquid_bronze:{name:'Liquid Bronze',       price:95,  cat:'fluid', color:'#a3702f'},
   liquid_cu_fe_alloy:{name:'Liquid Cu-Fe Alloy', price:110, cat:'fluid', color:'#c07a4a'},
   liquid_steel: {name:'Liquid Steel',        price:130, cat:'fluid', color:'#9aa3ad'},
@@ -331,12 +333,14 @@ const PLACEABLES = {
   furnace:     {name:'Furnace',       cost:1250, w:2,h:2, kind:'processor', color:'#7a3b28', watts:20, minWatts:15, batchMs:2000,
                  inCat:'solid', outCat:'fluid',
                  recipes:[{in:{iron_ore:1}, out:{liquid_iron:1}},{in:{copper_ore:1}, out:{liquid_copper:1}},
+                          {in:{gold:1}, out:{liquid_gold:1}},
                           {in:{wood_log:1}, out:{charcoal:1}, batchMs:1500}]},
   tree_farm:   {name:'Tree Farm',     cost:400,  w:2,h:2, kind:'farm', color:'#2f6e2f', watts:5, prodMs:3000, produces:'wood_log'},
   storage:     {name:'Storage',       cost:300,  w:2,h:2, kind:'storage', color:'#6a5a3a', capacity:15},
   molder:      {name:'Ingot Molder',  cost:1500, w:2,h:2, kind:'processor', color:'#555a63', watts:25, batchMs:1500,
                  inCat:'fluid', outCat:'solid',
                  recipes:[{in:{liquid_iron:1}, out:{iron_ingot:1}},{in:{liquid_copper:1}, out:{copper_ingot:1}},
+                          {in:{liquid_gold:1}, out:{gold_ingot:1}},
                           {in:{liquid_cu_fe_alloy:1}, out:{cu_fe_ingot:1}},{in:{liquid_steel:1}, out:{steel_ingot:1}}]},
   compressor:  {name:'Compressor',    cost:1750, w:2,h:2, kind:'processor', color:'#40474f', watts:30, batchMs:2000,
                  inCat:'solid', outCat:'solid',
@@ -475,6 +479,12 @@ function showMsg(text){
 }
 function fmtMoney(n){ return '$'+Math.floor(n).toLocaleString(); }
 const DIRS = [ [1,0], [0,1], [-1,0], [0,-1] ]; // 0 right,1 down,2 left,3 up
+
+// Registry for machine kinds added further down in this file (see window.GameAPI
+// at the bottom of the main script block, and the Agriculture section after it). Each entry can supply: maxItems(def), acceptsItem(nb,itemType,cat),
+// tick(obj,now), drawIcon(ctx,x,y,w,h,obj), drawSwatch(ctx,x,y,w,h,def), onClick(obj),
+// tooltip(obj,def), outputCandidates(obj) — all optional, with sensible fallbacks used below.
+const CUSTOM_KINDS = {};
 const opp = d => (d+2)%4;
 
 /* ============================== OBJECT CREATION ============================== */
@@ -516,6 +526,8 @@ function placeObject(typeKey, ax, ay, rotation, pipeShape, flipped){
              : def.kind==='storage' ? def.capacity
              : def.inputPorts ? MAX_PIPE_ITEMS
              : def.kind==='burner' ? 6
+             : (CUSTOM_KINDS[def.kind] && CUSTOM_KINDS[def.kind].maxItems) ? CUSTOM_KINDS[def.kind].maxItems(def)
+             : CUSTOM_KINDS[def.kind] ? MAX_PIPE_ITEMS
              : 1,
     outRR: 0,                // round robin index for multi-output pipes
     lastProd: performance.now() + Math.random()*400,
@@ -611,7 +623,7 @@ function loadGame(data){
   }
   for(const w of (data.wires||[])){
     const f = idMap.get(w.from), t = idMap.get(w.to);
-    if(f && t) wires.push({from:f, to:t});
+    if(f && t && !wires.some(existing=>existing.from===f && existing.to===t)) wires.push({from:f, to:t});
   }
   incomeHistory = [];
   lastIncomeSample = 0;
@@ -882,6 +894,10 @@ function outputCandidates(obj){
   return rawOutputCandidates(obj).filter(c => !obj.blockedLinks.has(key(c.cell[0], c.cell[1])));
 }
 function rawOutputCandidates(obj){
+  if(CUSTOM_KINDS[obj.def.kind]){
+    const h = CUSTOM_KINDS[obj.def.kind];
+    return h.outputCandidates ? h.outputCandidates(obj) : cornerOutputCandidates(obj);
+  }
   if(obj.def.kind==='pipe'){
     const outs = pipeOutputsAbs(obj);
     const dir = outs.length===1 ? outs[0] : outs[obj.outRR % outs.length];
@@ -975,7 +991,7 @@ function acceptsInput(nb, fromDir, itemType, fromObj){
     if(nb.itemQueue.length >= nb.maxItems) return false;
     return true;
   }
-  if(nb.def.kind==='combiner' || nb.def.kind==='shaper' || nb.def.kind==='burner' || nb.def.inputPorts){
+  if(nb.def.kind==='combiner' || nb.def.kind==='shaper' || nb.def.kind==='burner' || nb.def.inputPorts || CUSTOM_KINDS[nb.def.kind]){
     // must be pushed into exactly one of the input tiles; resolved in pushInto using cell match
     return false;
   }
@@ -1003,6 +1019,17 @@ function pushInto(nb, targetCell, itemType, fromObj){
     money += ITEMS[itemType].price;
     totalShipped++;
     totalEarned += ITEMS[itemType].price;
+    return true;
+  }
+  if(CUSTOM_KINDS[nb.def.kind]){
+    const h = CUSTOM_KINDS[nb.def.kind];
+    const inCell = processorInCell(nb); // single input tile, top-left (or top-right if flipped)
+    if(targetCell[0]!==inCell[0] || targetCell[1]!==inCell[1]) return false;
+    const ok = h.acceptsItem ? h.acceptsItem(nb, itemType, cat) : (nb.def.inCat===cat);
+    if(!ok) return false;
+    const bufTotal = Object.values(nb.inputBuffer).reduce((a,b)=>a+b,0);
+    if(bufTotal >= nb.maxItems) return false;
+    nb.inputBuffer[itemType] = (nb.inputBuffer[itemType]||0) + 1;
     return true;
   }
   if(nb.def.kind==='processor'){
@@ -1061,7 +1088,7 @@ function tryPush(obj){
     const nb = grid.get(key(c.cell[0], c.cell[1]));
     if(!nb || nb===obj) continue;
     const fromDir = opp(c.dir);
-    if(nb.def.kind==='processor' || nb.def.kind==='combiner' || nb.def.kind==='shaper' || nb.def.kind==='burner' || nb.def.inputPorts){
+    if(nb.def.kind==='processor' || nb.def.kind==='combiner' || nb.def.kind==='shaper' || nb.def.kind==='burner' || nb.def.inputPorts || CUSTOM_KINDS[nb.def.kind]){
       if(pushInto(nb, c.cell, itemType, obj)){ obj.itemQueue.shift(); if(obj.def.kind==='pipe') obj.outRR++; return; }
       continue;
     }
@@ -1104,6 +1131,8 @@ canvas.addEventListener('click', e=>{
       showMsg(obj.active ? 'Storage output ON' : 'Storage output OFF');
     } else if(obj && obj.def.manualRecipe){
       openRecipeSelect(obj);
+    } else if(obj && CUSTOM_KINDS[obj.def.kind] && CUSTOM_KINDS[obj.def.kind].onClick){
+      CUSTOM_KINDS[obj.def.kind].onClick(obj);
     }
   } else if(tool==='wire'){
     const obj = grid.get(key(cx,cy));
@@ -1115,8 +1144,13 @@ canvas.addEventListener('click', e=>{
       if(obj===wirePending){ wirePending=null; return; }
       const isPowerTarget = obj.def.kind==='drill' || obj.def.kind==='processor' || obj.def.kind==='farm' || obj.def.kind==='combiner' || obj.def.kind==='shaper' || obj.def.inputPorts;
       if(isPowerTarget){
-        wires.push({from:wirePending, to:obj});
-        showMsg('Wired!');
+        const alreadyWired = wires.some(w=>w.from===wirePending && w.to===obj);
+        if(alreadyWired){
+          showMsg('Already wired — connecting it again wouldn\'t add power, just clutter');
+        } else {
+          wires.push({from:wirePending, to:obj});
+          showMsg('Wired!');
+        }
       } else {
         showMsg('Target must be a machine that needs power');
       }
@@ -1263,7 +1297,7 @@ document.querySelectorAll('.tool-btn').forEach(b=>{
 const buildTrack = document.getElementById('buildTrack');
 const buildViewport = document.getElementById('buildViewport');
 const buildSlider = document.getElementById('buildSlider');
-BUILD_ORDER.forEach(k=>{
+function createBuildCard(k){
   const def = PLACEABLES[k];
   const card = document.createElement('div');
   card.className = 'item-card';
@@ -1285,7 +1319,10 @@ BUILD_ORDER.forEach(k=>{
     document.querySelectorAll('.item-card').forEach(c=>c.classList.remove('sel'));
     card.classList.add('sel');
   });
-  buildTrack.appendChild(card);
+  return card;
+}
+BUILD_ORDER.forEach(k=>{
+  buildTrack.appendChild(createBuildCard(k));
 });
 
 function setupBuildSlider(){
@@ -1417,6 +1454,7 @@ function drawSwatchIcon(g, k, def){
   else if(def.kind==='storage'){ iconStorage(g, 3, 2, 100, 40, false, false); }
   else if(def.kind==='burner'){ iconBurner(g, 3, 2, 100, 40, false); }
   else if(def.inputPorts){ iconMultiPort(g, 3, 2, 100, 40, def, false); }
+  else if(CUSTOM_KINDS[def.kind] && CUSTOM_KINDS[def.kind].drawSwatch){ CUSTOM_KINDS[def.kind].drawSwatch(g, 3, 2, 100, 40, def); }
 }
 
 /* ============================== SIMULATION ============================== */
@@ -1435,7 +1473,7 @@ function simulate(now){
   // power pass (consumers) — anything with a recipe list, plus drills & farms, draws power
   for(const obj of objects){
     const k = obj.def.kind;
-    if(k==='drill' || k==='farm' || obj.def.recipes){
+    if(k==='drill' || k==='farm' || obj.def.recipes || (CUSTOM_KINDS[k] && obj.def.watts)){
       obj.suppliedWatts = computeSupplied(obj);
       if(obj.def.minWatts){
         obj.powered = obj.suppliedWatts >= obj.def.minWatts;
@@ -1511,10 +1549,17 @@ function simulate(now){
     obj.processingDoneAt = now + (recipe.batchMs || obj.def.batchMs) / speed;
   }
 
+  // custom kinds (registered via window.GameAPI.registerCustomKind — see the Agriculture section)
+  // get to run their own production logic every tick, after power/recipes are resolved above
+  for(const obj of objects){
+    const h = CUSTOM_KINDS[obj.def.kind];
+    if(h && h.tick) h.tick(obj, now);
+  }
+
   // transfer tick (pipes, drill buffers, farm/storage/recipe-machine outputs)
   for(const obj of objects){
     const k = obj.def.kind;
-    if(k!=='pipe' && k!=='drill' && k!=='farm' && k!=='storage' && !obj.def.recipes) continue;
+    if(k!=='pipe' && k!=='drill' && k!=='farm' && k!=='storage' && !obj.def.recipes && !CUSTOM_KINDS[k]) continue;
     if(now - obj.lastTransfer < PIPE_TRANSFER_MS) continue;
     obj.lastTransfer = now;
     tryPush(obj);
@@ -1979,6 +2024,8 @@ function drawObject(obj){
     iconBurner(ctx, sx+2, sy+2, w-4, h-4, obj.burnEndAt!==null);
   } else if(def.inputPorts){
     iconMultiPort(ctx, sx+2, sy+2, w-4, h-4, def, obj.flipped);
+  } else if(CUSTOM_KINDS[def.kind] && CUSTOM_KINDS[def.kind].drawIcon){
+    CUSTOM_KINDS[def.kind].drawIcon(ctx, sx+2, sy+2, w-4, h-4, obj);
   }
 
   if(def.kind==='pipe'){
@@ -2087,6 +2134,7 @@ function describeCandidate(obj){
     if(nb.def.kind==='storage') return `Storage (${nb.itemQueue.length}/${nb.maxItems})`;
     if(nb.def.inputPorts) return `${nb.def.name} input${nb.def.manualRecipe && nb.selectedRecipe==null ? ' (no recipe set)' : ''}`;
     if(nb.def.kind==='burner') return 'Burner fuel input';
+    if(CUSTOM_KINDS[nb.def.kind]) return `${nb.def.name} input`;
     return `${nb.def.name} (can't accept)`;
   });
   return parts.join('  /  ');
@@ -2197,6 +2245,8 @@ function updateTooltip(){
       <div style="margin-top:4px">${itemListHtml(obj.itemQueue.reduce((m,it)=>{m[it]=(m[it]||0)+1;return m;},{}))}</div>
       <div style="margin-top:5px;color:var(--dim);font-size:11px">Fuels: Wood Log (30W/2s), Charcoal (60W/3s), Coal (75W/4s)</div>
       <div class="t-row" style="margin-top:4px"><span>Wired to</span><b>${wires.filter(w=>w.from===obj).length} machine(s)</b></div>`;
+  } else if(CUSTOM_KINDS[def.kind] && CUSTOM_KINDS[def.kind].tooltip){
+    html = CUSTOM_KINDS[def.kind].tooltip(obj, def) || `<div class="t-title">${def.name}</div>`;
   }
   tooltipEl.innerHTML = html;
   tooltipEl.style.display = 'block';
@@ -2208,11 +2258,312 @@ function updateTooltip(){
   tooltipEl.style.top = ty+'px';
 }
 
+/* ============================== EXTENSION API ============================== */
+// Exposed for the Agriculture section (and anything else) below to hook into without touching
+// this script directly. addPlaceable/addItem just extend the existing tables; registerCustomKind
+// plugs a new machine kind into input handling, power, ticking, drawing, click, and tooltips —
+// see the CUSTOM_KINDS comment near the top of this script for the exact handler shape.
+window.GameAPI = {
+  PLACEABLES, ITEMS, BUILD_ORDER, DIRS, TILE,
+  INPUT_COLOR, OUTPUT_COLOR, MAX_PIPE_ITEMS,
+  objects, grid, wires,
+  key, cellsFor, placeObject, discoverItem, showMsg, fmtMoney,
+  cornerOutputCandidates, processorInCell, roundRectOn, itemListHtml, itemIconHtml,
+  addPlaceable(typeKey, def){
+    PLACEABLES[typeKey] = def;
+    const gi = BUILD_ORDER.indexOf('garage');
+    if(gi>=0) BUILD_ORDER.splice(gi, 0, typeKey); else BUILD_ORDER.push(typeKey);
+    // the build panel's cards are already rendered by the time code further down this file runs,
+    // so insert this one's card directly at the same position
+    const card = createBuildCard(typeKey);
+    const cardsNow = buildTrack.children;
+    const insertIdx = BUILD_ORDER.indexOf(typeKey);
+    if(insertIdx < cardsNow.length) buildTrack.insertBefore(card, cardsNow[insertIdx]);
+    else buildTrack.appendChild(card);
+    setupBuildSlider();
+  },
+  addItem(itemKey, def){ ITEMS[itemKey] = def; },
+  registerCustomKind(kind, handlers){ CUSTOM_KINDS[kind] = handlers; },
+};
+
 /* show the slot menu before anything starts — it opens straight to the sign-in panel,
    and initFirebaseAuthFlow() swaps it to the slot grid automatically once auth resolves
    (instantly, with no click needed, if the browser already has a saved session) */
 document.getElementById('slotMenu').classList.add('show');
 showAuthPanel();
+</script>
+<script>
+/* ==============================================================================
+   AGRICULTURE & CROP PROCESSING SYSTEM
+   Plugs into the core game entirely through window.GameAPI (see the "EXTENSION API"
+   section near the bottom of the main <script> in index.html). Nothing in here reaches
+   into the core game's internals directly — new items/machines are registered, and
+   the four hooks (acceptsItem, tick, drawIcon/drawSwatch, onClick, tooltip) are all the
+   core engine ever calls on this file.
+   ============================================================================== */
+(function(){
+  const GameAPI = window.GameAPI;
+  if(!GameAPI){ console.error('agriculture.js: window.GameAPI is missing — load order is wrong'); return; }
+
+  /* ---- crop table (drives items, the Farm Plot's picker UI, and pricing) ---- */
+  const CROPS = [
+    {id:'wheat',     name:'Wheat',      base:5, color:'#d8c24a'},
+    {id:'carrot',    name:'Carrot',     base:2, color:'#e8823c'},
+    {id:'potato',    name:'Potato',     base:6, color:'#c9a25a'},
+    {id:'sugarcane', name:'Sugar Cane', base:4, color:'#8fcf6a'},
+  ];
+  const POISON_CHANCE = 0.12;
+
+  /* ---- items: raw / poisoned / washed variants for every crop ----
+     Poisoned = 1% of base value, Washed = base + $5 — both match the spec table exactly
+     when computed this way, so there's no need to hand-enter all twelve prices. */
+  for(const c of CROPS){
+    GameAPI.addItem(c.id, {name:c.name, price:c.base, cat:'food', color:c.color});
+    GameAPI.addItem(c.id+'_poisoned', {name:c.name+' (Poisoned)', price: Math.round(c.base*0.01*100)/100, cat:'food', color:'#5a6a3a'});
+    GameAPI.addItem(c.id+'_washed', {name:c.name+' (Washed)', price: c.base+5, cat:'food', color: shade(c.color, 1.25)});
+  }
+  function shade(hex, factor){
+    const n = parseInt(hex.slice(1),16);
+    let r = Math.min(255, Math.round(((n>>16)&255)*factor));
+    let g = Math.min(255, Math.round(((n>>8)&255)*factor));
+    let b = Math.min(255, Math.round((n&255)*factor));
+    return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }
+  function cropBase(itemType){ return itemType.replace('_poisoned','').replace('_washed',''); }
+
+  /* ---- placeables ---- */
+  GameAPI.addPlaceable('farm_plot', {
+    name:'Farm Plot', cost:750, w:2, h:3, kind:'farm_plot', color:'#3a6b2f',
+    watts:5, inCat:'fluid',
+    prodMs:15000, waterPerCycle:8, unitsPerCycle:6, poisonChance:POISON_CHANCE,
+  });
+  GameAPI.addPlaceable('food_pipe', {
+    name:'Food Pipe', cost:150, w:1, h:1, kind:'pipe', category:'food', color:'#7fae4a',
+  });
+  GameAPI.addPlaceable('filterer', {
+    name:'Filterer', cost:1000, w:4, h:4, kind:'filterer', color:'#4a5a68',
+    watts:25, inCat:'food', scanMs:400, destroyChance:0.90,
+  });
+  GameAPI.addPlaceable('washer', {
+    name:'Washer', cost:1200, w:2, h:3, kind:'washer', color:'#2e6e91',
+    watts:30, inCat:'food', batchMs:2000, batchSize:3, infectChance:0.75,
+  });
+
+  /* ---- shared tiny UI style, injected once ---- */
+  const style = document.createElement('style');
+  style.textContent = `
+    #cropPickerPanel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);display:none;
+      flex-direction:column;background:#1c2128;border:1px solid #ffffff22;border-radius:14px;
+      padding:12px 14px;box-shadow:0 10px 30px #000a;width:min(92vw,300px);color:#e8ede8;z-index:260;gap:8px;}
+    #cropPickerPanel.show{display:flex;}
+    #cropPickerPanel .cp-header{display:flex;justify-content:space-between;align-items:center;font-weight:700;}
+    #cropPickerPanel .cp-close{cursor:pointer;color:#8a9088;}
+    .crop-option{background:#232a24;border:2px solid transparent;border-radius:8px;padding:9px 11px;
+      cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;}
+    .crop-option:hover{border-color:#ffffff33;}
+    .crop-option.sel{border-color:#7fae4a;background:#26331f;}
+  `;
+  document.head.appendChild(style);
+
+  const picker = document.createElement('div');
+  picker.id = 'cropPickerPanel';
+  picker.innerHTML = `<div class="cp-header"><span>Choose a Crop</span><span class="cp-close" id="cropPickerClose">✕</span></div><div id="cropOptions"></div>`;
+  document.body.appendChild(picker);
+  document.getElementById('cropPickerClose').addEventListener('click', ()=> picker.classList.remove('show'));
+
+  function openCropPicker(obj){
+    const opts = document.getElementById('cropOptions');
+    opts.innerHTML = '';
+    CROPS.forEach(c=>{
+      const el = document.createElement('div');
+      el.className = 'crop-option' + (obj.selectedCrop===c.id ? ' sel' : '');
+      el.innerHTML = `<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${c.color};margin-right:6px;"></span>${c.name}</span><span style="color:#8fcf6a">$${c.base}</span>`;
+      el.addEventListener('click', ()=>{
+        obj.selectedCrop = c.id;
+        GameAPI.showMsg(`Farm Plot planted: ${c.name}`);
+        picker.classList.remove('show');
+      });
+      opts.appendChild(el);
+    });
+    picker.classList.add('show');
+  }
+
+  /* ---- Farm Plot: pick 1 of 4 crops, drinks water, outputs 6 units every 15s ---- */
+  GameAPI.registerCustomKind('farm_plot', {
+    maxItems: ()=>12,
+    acceptsItem: (nb, itemType, cat) => cat==='fluid' && itemType==='water',
+    tick(obj, now){
+      if(obj.lastCropProd==null) obj.lastCropProd = now + Math.random()*400;
+      if(!obj.selectedCrop || !obj.powered) return;
+      if(now - obj.lastCropProd < obj.def.prodMs) return;
+      const waterHave = obj.inputBuffer.water || 0;
+      if(waterHave < obj.def.waterPerCycle) return;          // not enough water banked yet
+      if(obj.itemQueue.length + obj.def.unitsPerCycle > obj.maxItems) return; // wait for room downstream
+      obj.inputBuffer.water -= obj.def.waterPerCycle;
+      obj.lastCropProd = now;
+      for(let i=0; i<obj.def.unitsPerCycle; i++){
+        const poisoned = Math.random() < obj.def.poisonChance;
+        const itemType = obj.selectedCrop + (poisoned ? '_poisoned' : '');
+        obj.itemQueue.push(itemType);
+        GameAPI.discoverItem(itemType);
+      }
+    },
+    drawIcon(ctx,x,y,w,h,obj){ drawFarmPlot(ctx,x,y,w,h,obj.selectedCrop,obj.powered); },
+    drawSwatch(ctx,x,y,w,h,def){ drawFarmPlot(ctx,x,y,w,h,'wheat',true); },
+    onClick(obj){ openCropPicker(obj); },
+    tooltip(obj,def){
+      const crop = CROPS.find(c=>c.id===obj.selectedCrop);
+      const water = obj.inputBuffer.water || 0;
+      return `<div class="t-title">Farm Plot</div>
+        <div class="t-row"><span>Crop</span><b>${crop ? crop.name : 'None — click to choose'}</b></div>
+        <div class="t-row"><span>Water banked</span><b>${water}/${obj.def.waterPerCycle}</b></div>
+        <div class="t-row"><span>Power</span><b style="color:${obj.powered?'#5cc98a':'#e06a5a'}">${obj.powered?'Powered':'No power'}</b></div>
+        <div class="t-row"><span>Output buffer</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
+        <div style="margin-top:5px;color:var(--dim);font-size:11px">6 crops every 15s • each has a 12% chance of being poisoned</div>`;
+    },
+  });
+
+  /* ---- Filterer: scans one food item at a time, destroys 90% of poisoned ones ---- */
+  GameAPI.registerCustomKind('filterer', {
+    maxItems: ()=>14,
+    acceptsItem: (nb, itemType, cat) => cat==='food',
+    tick(obj, now){
+      if(obj.lastScan==null) obj.lastScan = now;
+      if(!obj.powered) return;
+      if(now - obj.lastScan < obj.def.scanMs) return;
+      const keys = Object.keys(obj.inputBuffer).filter(k=>obj.inputBuffer[k]>0);
+      if(keys.length===0) return;
+      if(obj.itemQueue.length >= obj.maxItems) return;
+      obj.lastScan = now;
+      const k = keys[0];
+      obj.inputBuffer[k]--;
+      if(k.endsWith('_poisoned')){
+        if(Math.random() < obj.def.destroyChance){
+          obj.destroyedCount = (obj.destroyedCount||0) + 1; // caught and destroyed
+        } else {
+          obj.itemQueue.push(k); // the 10% that slips through
+        }
+      } else {
+        obj.itemQueue.push(k); // clean crops always pass
+      }
+    },
+    drawIcon(ctx,x,y,w,h,obj){ drawFilterer(ctx,x,y,w,h,obj.powered); },
+    drawSwatch(ctx,x,y,w,h,def){ drawFilterer(ctx,x,y,w,h,true); },
+    tooltip(obj,def){
+      return `<div class="t-title">Filterer</div>
+        <div class="t-row"><span>Power</span><b style="color:${obj.powered?'#5cc98a':'#e06a5a'}">${obj.powered?'Powered':'No power'}</b></div>
+        <div class="t-row"><span>Destroyed</span><b>${obj.destroyedCount||0}</b></div>
+        <div class="t-row"><span>Buffer</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
+        <div style="margin-top:5px;color:var(--dim);font-size:11px">Destroys 90% of poisoned crops that pass through — 10% slip through undetected.</div>`;
+    },
+  });
+
+  /* ---- Washer: batches of 3, +$5 value when washed pure, spreads contamination within a batch ---- */
+  GameAPI.registerCustomKind('washer', {
+    maxItems: ()=>12,
+    acceptsItem: (nb, itemType, cat) => cat==='food' && !itemType.endsWith('_washed'),
+    tick(obj, now){
+      if(obj.lastWash==null) obj.lastWash = now;
+      if(!obj.powered) return;
+      if(now - obj.lastWash < obj.def.batchMs) return;
+      const total = Object.values(obj.inputBuffer).reduce((a,b)=>a+b,0);
+      if(total < obj.def.batchSize) return; // needs a full batch of 3 before it runs
+      if(obj.itemQueue.length + obj.def.batchSize > obj.maxItems) return;
+      obj.lastWash = now;
+      const picked = [];
+      for(const k in obj.inputBuffer){
+        while(picked.length < obj.def.batchSize && obj.inputBuffer[k] > 0){
+          picked.push(k); obj.inputBuffer[k]--;
+        }
+        if(picked.length >= obj.def.batchSize) break;
+      }
+      const hasPoison = picked.some(k=>k.endsWith('_poisoned'));
+      for(const k of picked){
+        const crop = cropBase(k);
+        let outType;
+        if(k.endsWith('_poisoned')){
+          outType = k; // washing doesn't cure contamination
+        } else if(hasPoison && Math.random() < obj.def.infectChance){
+          outType = crop+'_poisoned'; // infected by a poisoned batch-mate
+        } else {
+          outType = crop+'_washed';
+        }
+        obj.itemQueue.push(outType);
+        GameAPI.discoverItem(outType);
+      }
+    },
+    drawIcon(ctx,x,y,w,h,obj){ drawWasher(ctx,x,y,w,h,obj.powered); },
+    drawSwatch(ctx,x,y,w,h,def){ drawWasher(ctx,x,y,w,h,true); },
+    tooltip(obj,def){
+      const bufKeys = Object.keys(obj.inputBuffer).filter(k=>obj.inputBuffer[k]>0);
+      const buf = bufKeys.length ? bufKeys.map(k=>`${GameAPI.itemIconHtml(k)} ${GameAPI.ITEMS[k].name} x${obj.inputBuffer[k]}`).join('<br>') : 'empty';
+      return `<div class="t-title">Washer</div>
+        <div class="t-row"><span>Power</span><b style="color:${obj.powered?'#5cc98a':'#e06a5a'}">${obj.powered?'Powered':'No power'}</b></div>
+        <div class="t-row"><span>Batch</span><b>${obj.def.batchSize} every ${(obj.def.batchMs/1000).toFixed(1)}s</b></div>
+        <div style="margin-top:5px;color:var(--dim);font-size:11px">Waiting to wash:</div>
+        <div>${buf}</div>
+        <div style="margin-top:5px;color:var(--dim);font-size:11px">A poisoned item in the batch has a 75% chance to infect each other item in that same batch.</div>`;
+    },
+  });
+
+  /* ---- icons ---- */
+  function drawFarmPlot(ctx,x,y,w,h,cropId,powered){
+    ctx.fillStyle = '#2f4a24';
+    GameAPI.roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.08); ctx.fill();
+    ctx.strokeStyle = '#00000066'; ctx.lineWidth = 1.5;
+    GameAPI.roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.08); ctx.stroke();
+    ctx.strokeStyle = '#1e3018'; ctx.lineWidth = Math.max(1,w*0.02);
+    for(let i=1;i<4;i++){
+      const ly = y + h*i/4;
+      ctx.beginPath(); ctx.moveTo(x+w*0.08, ly); ctx.lineTo(x+w*0.92, ly); ctx.stroke();
+    }
+    const crop = CROPS.find(c=>c.id===cropId);
+    ctx.fillStyle = crop ? crop.color : '#4a5a44';
+    for(let i=0;i<4;i++){
+      const px = x + w*(0.16+i*0.22);
+      ctx.beginPath(); ctx.arc(px, y+h*0.5, Math.min(w,h)*0.07, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = GameAPI.INPUT_COLOR;
+    ctx.beginPath(); ctx.arc(x+w*0.12, y+h*0.12, Math.min(w,h)*0.06, 0, 7); ctx.fill();
+    ctx.fillStyle = GameAPI.OUTPUT_COLOR;
+    ctx.beginPath(); ctx.arc(x+w*0.88, y+h*0.88, Math.min(w,h)*0.06, 0, 7); ctx.fill();
+  }
+  function drawFilterer(ctx,x,y,w,h,powered){
+    ctx.fillStyle = '#38424a';
+    GameAPI.roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.08); ctx.fill();
+    ctx.strokeStyle = powered ? '#8fd0ff' : '#00000066'; ctx.lineWidth = 2;
+    GameAPI.roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.08); ctx.stroke();
+    const cx=x+w*0.5, cy=y+h*0.5;
+    ctx.strokeStyle = '#cfe8ff'; ctx.lineWidth = Math.max(1.5, w*0.015);
+    ctx.beginPath();
+    ctx.moveTo(x+w*0.28, y+h*0.28); ctx.lineTo(x+w*0.72, y+h*0.28);
+    ctx.lineTo(cx+w*0.06, cy); ctx.lineTo(cx+w*0.06, y+h*0.72);
+    ctx.lineTo(cx-w*0.06, y+h*0.72); ctx.lineTo(cx-w*0.06, cy);
+    ctx.closePath(); ctx.stroke();
+    ctx.fillStyle = GameAPI.INPUT_COLOR;
+    ctx.beginPath(); ctx.arc(x+w*0.12, y+h*0.5, Math.min(w,h)*0.05, 0, 7); ctx.fill();
+    ctx.fillStyle = GameAPI.OUTPUT_COLOR;
+    ctx.beginPath(); ctx.arc(x+w*0.88, y+h*0.88, Math.min(w,h)*0.05, 0, 7); ctx.fill();
+  }
+  function drawWasher(ctx,x,y,w,h,powered){
+    ctx.fillStyle = '#204558';
+    GameAPI.roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.1); ctx.fill();
+    ctx.strokeStyle = powered ? '#8fe0ff' : '#00000066'; ctx.lineWidth = 2;
+    GameAPI.roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.1); ctx.stroke();
+    const cx=x+w*0.5, cy=y+h*0.55, r=Math.min(w,h)*0.22;
+    ctx.strokeStyle = '#bff0ff'; ctx.lineWidth = Math.max(1.5, w*0.015);
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.stroke();
+    ctx.fillStyle = '#6fd0f0';
+    for(const a of [0.3,1.6,3.4,5.0]){
+      ctx.beginPath(); ctx.arc(cx+Math.cos(a)*r*0.6, cy+Math.sin(a)*r*0.6, r*0.14, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = GameAPI.INPUT_COLOR;
+    ctx.beginPath(); ctx.arc(x+w*0.14, y+h*0.16, Math.min(w,h)*0.06, 0, 7); ctx.fill();
+    ctx.fillStyle = GameAPI.OUTPUT_COLOR;
+    ctx.beginPath(); ctx.arc(x+w*0.86, y+h*0.86, Math.min(w,h)*0.06, 0, 7); ctx.fill();
+  }
+})();
+
 </script>
 </body>
 </html>
