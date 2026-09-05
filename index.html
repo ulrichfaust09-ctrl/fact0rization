@@ -52,6 +52,19 @@
   #recipesPanel .rp-header{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:6px;}
   #recipesPanel .rp-close{cursor:pointer;color:var(--dim);font-size:16px;}
   #recipesList{overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+
+  #issuesPanel{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);display:none;flex-direction:column;background:var(--panel);border:1px solid #ffffff14;border-radius:14px;padding:10px 12px;box-shadow:0 6px 22px #0007;width:min(94vw,380px);max-height:60vh;color:var(--text);}
+  #issuesPanel.show{display:flex;}
+  #issuesPanel .rp-header{display:flex;justify-content:space-between;align-items:center;font-weight:700;margin-bottom:6px;}
+  #issuesPanel .rp-close{cursor:pointer;color:var(--dim);font-size:16px;}
+  #issuesList{overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+  #issuesEmpty{color:var(--dim);font-size:12px;padding:14px 4px;text-align:center;}
+  .issue-row{background:var(--panel2);border-radius:8px;padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;gap:2px;}
+  .issue-row:hover{outline:1px solid #ffffff22;}
+  .issue-row .issue-name{font-weight:600;font-size:12px;}
+  .issue-row .issue-reason{font-size:11px;color:#ff8a7a;}
+  .tool-btn[data-tool="issues"]{position:relative;}
+  #issuesBadge{position:absolute;top:1px;right:2px;background:#ff4d4d;color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 4px;line-height:1.3;display:none;}
   .rp-row{background:var(--panel2);border-radius:8px;padding:8px 10px;cursor:pointer;}
   .rp-row-head{display:flex;justify-content:space-between;align-items:center;}
   .rp-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:7px;}
@@ -139,7 +152,7 @@
   <div class="chip" id="info">
     <div>Income: <b id="incomeInfo">$0/min</b></div>
     <div>Power/sec: <b id="powInfo">0 / 0 W</b></div>
-    <div>Items shipped: <b id="shipInfo">0</b></div>
+    <div>Item shipped: <b id="shipInfo">0</b></div>
   </div>
 </div>
 
@@ -196,6 +209,11 @@
   <div id="recipesList"></div>
 </div>
 
+<div id="issuesPanel">
+  <div class="rp-header"><span>Factory Issues</span><span class="rp-close" id="issuesClose">✕</span></div>
+  <div id="issuesList"></div>
+</div>
+
 <div id="recipeSelectPanel">
   <div class="rs-header"><span id="rsTitle">Recipe</span><span class="rs-close" id="rsClose">✕</span></div>
   <div id="rsOptions"></div>
@@ -210,6 +228,7 @@
     <div class="tool-btn" data-tool="recipes"><div class="glyph">📖</div>recipes<div class="hint">4</div></div>
     <div class="tool-btn" data-tool="connectors"><div class="glyph">🔗</div>connectors<div class="hint">5</div></div>
     <div class="tool-btn" data-tool="glove"><div class="glyph">🧤</div>glove<div class="hint">Z</div></div>
+    <div class="tool-btn" data-tool="issues"><div class="glyph">⚠️</div>issues<span id="issuesBadge">0</span><div class="hint">6</div></div>
   </div>
 </div>
 
@@ -1142,7 +1161,7 @@ canvas.addEventListener('click', e=>{
       else showMsg('Select a power source (Solar Panel or Burner) first');
     } else {
       if(obj===wirePending){ wirePending=null; return; }
-      const isPowerTarget = isPowerConsumer(obj.def) || obj.def.kind==='processor' || obj.def.kind==='combiner' || obj.def.kind==='shaper';
+      const isPowerTarget = obj.def.kind==='drill' || obj.def.kind==='processor' || obj.def.kind==='farm' || obj.def.kind==='combiner' || obj.def.kind==='shaper' || obj.def.inputPorts || (CUSTOM_KINDS[obj.def.kind] && obj.def.watts);
       if(isPowerTarget){
         const alreadyWired = wires.some(w=>w.from===wirePending && w.to===obj);
         if(alreadyWired){
@@ -1242,6 +1261,7 @@ addEventListener('keydown', e=>{
   else if(k==='2') setTool('wire');
   else if(k==='3') setTool('demolish');
   else if(k==='4') toggleRecipesPanel();
+  else if(k==='6') toggleIssuesPanel();
   else if(k==='5') setTool('connectors');
   else if(k==='z') setTool('glove');
   else if(k==='escape'){ setTool('select'); closeRecipeSelect(); }
@@ -1283,12 +1303,14 @@ function setTool(t){
   document.querySelectorAll('.tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.tool===t));
   document.getElementById('buildPanel').classList.toggle('show', t==='build');
   closeRecipesPanel();
+  closeIssuesPanel();
   wirePending = null;
   connSelected = null;
 }
 document.querySelectorAll('.tool-btn').forEach(b=>{
   b.addEventListener('click', ()=>{
     if(b.dataset.tool==='recipes'){ toggleRecipesPanel(); return; }
+    if(b.dataset.tool==='issues'){ toggleIssuesPanel(); return; }
     setTool(b.dataset.tool);
   });
 });
@@ -1407,6 +1429,92 @@ function renderRecipesPanel(){
   }
 }
 
+/* ============================== FACTORY ISSUES ============================== */
+let issuesPanelOpen = false;
+const issuesPanelEl = document.getElementById('issuesPanel');
+const issuesListEl = document.getElementById('issuesList');
+const issuesBadgeEl = document.getElementById('issuesBadge');
+document.getElementById('issuesClose').addEventListener('click', closeIssuesPanel);
+
+// Returns a short reason string if this object is currently stalled, or null if it's fine.
+// Kept deliberately simple: only flags things a player can actually act on (no power, no
+// recipe/crop chosen yet, or an output buffer so full nothing can leave) — not, say, a pipe
+// that's merely idle because nothing has reached it yet.
+function getStallReason(obj){
+  const def = obj.def, k = def.kind;
+  if(k==='pipe'){
+    if(obj.itemQueue.length >= obj.maxItems) return 'Backed up — nothing downstream is accepting items';
+    return null;
+  }
+  if(k==='drill' || k==='farm'){
+    if(!obj.powered) return 'No power';
+    if(obj.itemQueue.length >= obj.maxItems) return 'Output backed up';
+    return null;
+  }
+  if(k==='storage'){
+    if(obj.active && obj.itemQueue.length >= obj.maxItems) return 'Full and backed up — nothing downstream is accepting items';
+    return null;
+  }
+  if(k==='burner'){
+    if(obj.itemQueue.length >= obj.maxItems) return 'Fuel queue full';
+    return null;
+  }
+  if(def.recipes || CUSTOM_KINDS[k]){
+    if(!obj.powered && def.watts) return 'No power';
+    if(def.manualRecipe && obj.selectedRecipe==null) return 'No recipe selected';
+    if(k==='farm_plot' && !obj.selectedCrop) return 'No crop selected';
+    if(obj.itemQueue.length >= obj.maxItems) return 'Output backed up';
+    return null;
+  }
+  return null; // solar, garage, and other passive kinds never "stall"
+}
+function findAllIssues(){
+  const list = [];
+  for(const obj of objects){
+    const reason = getStallReason(obj);
+    if(reason) list.push({obj, reason});
+  }
+  return list;
+}
+function updateIssuesBadge(){
+  const count = findAllIssues().length;
+  if(count>0){ issuesBadgeEl.textContent = count>99 ? '99+' : count; issuesBadgeEl.style.display = 'block'; }
+  else { issuesBadgeEl.style.display = 'none'; }
+  if(issuesPanelOpen) renderIssuesPanel();
+}
+function toggleIssuesPanel(){
+  issuesPanelOpen = !issuesPanelOpen;
+  issuesPanelEl.classList.toggle('show', issuesPanelOpen);
+  document.querySelectorAll('.tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.tool==='issues' && issuesPanelOpen));
+  if(issuesPanelOpen) renderIssuesPanel();
+}
+function closeIssuesPanel(){
+  issuesPanelOpen = false;
+  issuesPanelEl.classList.remove('show');
+  document.querySelectorAll('.tool-btn[data-tool="issues"]').forEach(b=>b.classList.remove('active'));
+}
+function renderIssuesPanel(){
+  const issues = findAllIssues();
+  issuesListEl.innerHTML = '';
+  if(issues.length===0){
+    issuesListEl.innerHTML = `<div id="issuesEmpty">✅ Nothing's stalled — factory's running clean.</div>`;
+    return;
+  }
+  for(const {obj, reason} of issues){
+    const row = document.createElement('div');
+    row.className = 'issue-row';
+    row.innerHTML = `<div class="issue-name">${obj.def.name}</div><div class="issue-reason">${reason}</div>`;
+    row.addEventListener('click', ()=>{
+      const [wx,wy] = centerOf(obj);
+      cam.x = wx - W/2;
+      cam.y = wy - H/2;
+      closeIssuesPanel();
+      showMsg(`Jumped to ${obj.def.name}`);
+    });
+    issuesListEl.appendChild(row);
+  }
+}
+
 /* ============================== MACHINE RECIPE SELECT UI ============================== */
 let recipeSelectTarget = null;
 const recipeSelectPanelEl = document.getElementById('recipeSelectPanel');
@@ -1426,8 +1534,12 @@ function openRecipeSelect(obj){
     opt.className = 'rs-option' + (obj.selectedRecipe===idx ? ' sel' : '');
     opt.innerHTML = `${inStr} → <span class="rs-out">${outStr}</span> <span style="color:var(--dim)">($${totalValue})</span>`;
     opt.addEventListener('click', ()=>{
+      if(obj.selectedRecipe === idx){
+        closeRecipeSelect(); // already the active recipe — just close, don't wipe accumulated inputs
+        return;
+      }
       obj.selectedRecipe = idx;
-      obj.inputBuffer = {}; // switching recipes clears any half-collected mismatched inputs
+      obj.inputBuffer = {}; // switching to a genuinely different recipe clears mismatched inputs
       showMsg(obj.def.name + ' set to: ' + outStrPlain);
       openRecipeSelect(obj); // re-render to update selection highlight
     });
@@ -1468,21 +1580,18 @@ function sourceCurrentWatts(obj){
 function computeSupplied(obj){
   return wires.filter(w=>w.to===obj).reduce((sum,w)=>sum+sourceCurrentWatts(w.from), 0);
 }
-function isPowerConsumer(def){
-  if(!def) return false;
-  const k = def.kind;
-  return k==='drill' || k==='farm' || !!def.recipes || !!def.inputPorts || (CUSTOM_KINDS[k] && !!def.watts);
-}
 
 function simulate(now){
   // power pass (consumers) — anything with a recipe list, plus drills & farms, draws power
   for(const obj of objects){
-    if(!isPowerConsumer(obj.def)) continue;
-    obj.suppliedWatts = computeSupplied(obj);
-    if(obj.def.minWatts){
-      obj.powered = obj.suppliedWatts >= obj.def.minWatts;
-    } else {
-      obj.powered = obj.suppliedWatts >= obj.def.watts;
+    const k = obj.def.kind;
+    if(k==='drill' || k==='farm' || obj.def.recipes || (CUSTOM_KINDS[k] && obj.def.watts)){
+      obj.suppliedWatts = computeSupplied(obj);
+      if(obj.def.minWatts){
+        obj.powered = obj.suppliedWatts >= obj.def.minWatts;
+      } else {
+        obj.powered = obj.suppliedWatts >= obj.def.watts;
+      }
     }
   }
 
@@ -2075,6 +2184,17 @@ function drawObject(obj){
     ctx.beginPath(); ctx.arc(sx+10, sy+10, 5, 0, 7); ctx.fill();
     if(obj.itemQueue.length) drawItemDot(sx+w-14, sy+10, obj.itemQueue[0], 4.5);
   }
+
+  const stallReason = getStallReason(obj);
+  if(stallReason){
+    const bx = sx+w-11, by = sy+11;
+    ctx.fillStyle = '#ffcf3f';
+    ctx.beginPath(); ctx.moveTo(bx, by-8); ctx.lineTo(bx+7, by+6); ctx.lineTo(bx-7, by+6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2a1f00';
+    ctx.font = 'bold 9px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('!', bx, by+1.5);
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  }
 }
 
 
@@ -2082,6 +2202,7 @@ function drawObject(obj){
 let lastFrame = performance.now();
 let incomeHistory = []; // {t, total} samples over the last ~60s, used for the $/min readout
 let lastIncomeSample = 0;
+let lastIssuesCheck = 0;
 function loop(now){
   const dt = Math.min(0.05, (now-lastFrame)/1000);
   lastFrame = now;
@@ -2103,9 +2224,8 @@ function loop(now){
   document.getElementById('shipInfo').textContent = totalShipped;
   let usedW=0, capW=0;
   for(const o of objects){
-    if(!isPowerConsumer(o.def)) continue;
-    capW += o.def.watts;
-    if(o.powered) usedW += (o.def.minWatts ? (o.suppliedWatts>=o.def.watts?o.def.watts:o.def.minWatts) : o.def.watts);
+    const k = o.def.kind;
+    if(k==='drill'||k==='farm'||o.def.recipes){ capW += o.def.watts; if(o.powered) usedW += (o.def.minWatts ? (o.suppliedWatts>=o.def.watts?o.def.watts:o.def.minWatts) : o.def.watts); }
   }
   document.getElementById('powInfo').textContent = `${usedW} / ${capW} W`;
 
@@ -2119,6 +2239,11 @@ function loop(now){
     const minutes = (latest.t - oldest.t) / 60000;
     const rate = minutes > 0 ? Math.round((latest.total - oldest.total) / minutes) : 0;
     document.getElementById('incomeInfo').textContent = `$${rate}/min`;
+  }
+
+  if(now - lastIssuesCheck > 500){
+    lastIssuesCheck = now;
+    updateIssuesBadge();
   }
 
   requestAnimationFrame(loop);
