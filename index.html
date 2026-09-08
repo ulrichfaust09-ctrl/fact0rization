@@ -146,13 +146,13 @@
       <button class="hud-btn" id="btnMenu" title="Save and return to the slot menu">🗂 Menu</button>
     </div>
     <div class="chip" style="font-size:11px;line-height:1.5;">
-      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move &nbsp;•&nbsp; <kbd>0</kbd> Select &nbsp; <kbd>1</kbd> Build &nbsp; <kbd>2</kbd> Wire &nbsp; <kbd>4</kbd> Recipes &nbsp; <kbd>5</kbd> Connectors &nbsp; <kbd>Z</kbd> Glove &nbsp; <kbd>R</kbd> Rotate &nbsp; <kbd>F</kbd> Flip (also while holding w/ Glove) &nbsp; <kbd>U</kbd> Pipe shape &nbsp; <kbd>Esc</kbd> Cancel
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move &nbsp;•&nbsp; <kbd>0</kbd> Select &nbsp; <kbd>1</kbd> Build &nbsp; <kbd>2</kbd> Wire &nbsp; <kbd>4</kbd> Recipes &nbsp; <kbd>5</kbd> Connectors &nbsp; <kbd>6</kbd> Issues &nbsp; <kbd>Z</kbd> Glove &nbsp; <kbd>B</kbd> Blueprint &nbsp; <kbd>R</kbd> Rotate &nbsp; <kbd>F</kbd> Flip (also while holding w/ Glove) &nbsp; <kbd>U</kbd> Pipe shape &nbsp; <kbd>Esc</kbd> Cancel
     </div>
   </div>
   <div class="chip" id="info">
     <div>Income: <b id="incomeInfo">$0/min</b></div>
     <div>Power/sec: <b id="powInfo">0 / 0 W</b></div>
-    <div>Item shipped: <b id="shipInfo">0</b></div>
+    <div>Iron shipped: <b id="shipInfo">0</b></div>
   </div>
 </div>
 
@@ -229,6 +229,7 @@
     <div class="tool-btn" data-tool="connectors"><div class="glyph">🔗</div>connectors<div class="hint">5</div></div>
     <div class="tool-btn" data-tool="glove"><div class="glyph">🧤</div>glove<div class="hint">Z</div></div>
     <div class="tool-btn" data-tool="issues"><div class="glyph">⚠️</div>issues<span id="issuesBadge">0</span><div class="hint">6</div></div>
+    <div class="tool-btn" data-tool="blueprint"><div class="glyph">📐</div>blueprint<div class="hint">B</div></div>
   </div>
 </div>
 
@@ -434,6 +435,7 @@ let garagesPlaced = 0;
 const grid = new Map();
 const objects = new Set();
 const wires = [];
+const flowParticles = []; // {fx,fy,tx,ty,itemType,start,duration,to} — see completeTransfer()
 
 let tool = 'select';
 let selectedPlaceable = null;
@@ -442,6 +444,82 @@ let ghostPipeShape = 'straight';
 let ghostFlipped = false;
 let wirePending = null;
 let connSelected = null; // Connectors tool: pending source object for a manual (re)connect
+
+/* ============================== BLUEPRINT TOOL ============================== */
+// Copy a rectangle of the factory, then stamp it down elsewhere. A "piece" only stores
+// configuration (type, position, rotation/flip, pipe shape, chosen recipe/crop) — never
+// runtime state like item queues or wires, so pasted copies always start fresh.
+let blueprintClipboard = null; // {w,h,pieces:[{type,dx,dy,rotation,flipped,pipeShape,selectedRecipe,selectedCrop}],totalCost}
+let bpSelecting = false;
+let bpSelStart = null;
+let bpSelEnd = null;
+let bpSuppressNextClick = false;
+
+function finalizeBlueprintSelection(){
+  const x0 = Math.min(bpSelStart[0], bpSelEnd[0]), x1 = Math.max(bpSelStart[0], bpSelEnd[0]);
+  const y0 = Math.min(bpSelStart[1], bpSelEnd[1]), y1 = Math.max(bpSelStart[1], bpSelEnd[1]);
+  bpSelStart = null; bpSelEnd = null;
+  const seen = new Set();
+  const pieces = [];
+  for(let yy=y0; yy<=y1; yy++){
+    for(let xx=x0; xx<=x1; xx++){
+      const obj = grid.get(key(xx,yy));
+      if(!obj || seen.has(obj) || obj.def.kind==='garage') continue; // garages are never copied
+      const fits = obj.cells.every(([dx,dy])=>{
+        const ax=obj.ax+dx, ay=obj.ay+dy;
+        return ax>=x0 && ax<=x1 && ay>=y0 && ay<=y1;
+      });
+      if(!fits) continue; // only whole machines that fit entirely inside the selection
+      seen.add(obj);
+      pieces.push({
+        type: obj.type, dx: obj.ax-x0, dy: obj.ay-y0,
+        rotation: obj.rotation, flipped: obj.flipped, pipeShape: obj.pipeShape,
+        selectedRecipe: obj.selectedRecipe ?? null,
+        selectedCrop: obj.selectedCrop || null,
+      });
+    }
+  }
+  bpSuppressNextClick = true;
+  if(pieces.length===0){ showMsg('Nothing fully inside that selection'); return; }
+  const totalCost = pieces.reduce((s,p)=>s+PLACEABLES[p.type].cost, 0);
+  blueprintClipboard = {w:x1-x0+1, h:y1-y0+1, pieces, totalCost};
+  showMsg(`Blueprint copied: ${pieces.length} piece(s), $${totalCost} — click to place, R to rotate, Esc to clear`);
+}
+
+// Rotates every piece's anchor 90° clockwise. Pipes and drills also rotate their own
+// footprint (the only kinds this engine actually supports rotating) — everything else keeps
+// its original orientation, so a very tight layout could fail to re-fit after rotating; the
+// paste-time overlap check below refuses cleanly rather than ever placing something broken.
+function rotateBlueprint(bp){
+  const newPieces = bp.pieces.map(p=>{
+    const def = PLACEABLES[p.type];
+    const rotates = def.kind==='pipe' || def.kind==='drill';
+    return {...p, dx: bp.h-1-p.dy, dy: p.dx, rotation: rotates ? (p.rotation+1)%4 : p.rotation};
+  });
+  return {w:bp.h, h:bp.w, pieces:newPieces, totalCost:bp.totalCost};
+}
+function blueprintFits(bp, ox, oy){
+  const used = new Set();
+  for(const p of bp.pieces){
+    for(const [cdx,cdy] of cellsFor(p.type, p.rotation)){
+      const k = key(ox+p.dx+cdx, oy+p.dy+cdy);
+      if(grid.has(k) || used.has(k)) return false;
+      used.add(k);
+    }
+  }
+  return true;
+}
+function pasteBlueprint(bp, ox, oy){
+  if(money < bp.totalCost){ showMsg('Not enough money for this blueprint'); return; }
+  if(!blueprintFits(bp, ox, oy)){ showMsg("Can't place — something's in the way"); return; }
+  money -= bp.totalCost;
+  for(const p of bp.pieces){
+    const obj = placeObject(p.type, ox+p.dx, oy+p.dy, p.rotation, p.pipeShape, p.flipped);
+    if(p.selectedRecipe!=null) obj.selectedRecipe = p.selectedRecipe;
+    if(p.selectedCrop) obj.selectedCrop = p.selectedCrop;
+  }
+  showMsg('Blueprint placed');
+}
 
 // geometric neighbors that are currently valid input sources for a pipe (used by Force Lock)
 function currentInputSources(obj){
@@ -1046,8 +1124,9 @@ function pushInto(nb, targetCell, itemType, fromObj){
     if(targetCell[0]!==inCell[0] || targetCell[1]!==inCell[1]) return false;
     const ok = h.acceptsItem ? h.acceptsItem(nb, itemType, cat) : (nb.def.inCat===cat);
     if(!ok) return false;
-    const bufTotal = Object.values(nb.inputBuffer).reduce((a,b)=>a+b,0);
-    if(bufTotal >= nb.maxItems) return false;
+    // capped per ingredient type, not as one shared pool — otherwise a plentiful ingredient
+    // fills the whole buffer and silently starves out a scarcer one in the same recipe
+    if((nb.inputBuffer[itemType]||0) >= nb.maxItems) return false;
     nb.inputBuffer[itemType] = (nb.inputBuffer[itemType]||0) + 1;
     return true;
   }
@@ -1056,8 +1135,7 @@ function pushInto(nb, targetCell, itemType, fromObj){
     if(targetCell[0]!==inCell[0] || targetCell[1]!==inCell[1]) return false;
     if(nb.def.inCat !== cat) return false;
     if(!itemUsedByAnyRecipe(nb.def, itemType)) return false;
-    const bufTotal = Object.values(nb.inputBuffer).reduce((a,b)=>a+b,0);
-    if(bufTotal >= nb.maxItems) return false;
+    if((nb.inputBuffer[itemType]||0) >= nb.maxItems) return false;
     nb.inputBuffer[itemType] = (nb.inputBuffer[itemType]||0) + 1;
     return true;
   }
@@ -1078,8 +1156,7 @@ function pushInto(nb, targetCell, itemType, fromObj){
       allowedRecipes = nb.def.recipes; // single-recipe auto machines (e.g. Laminator)
     }
     if(!allowedRecipes.some(r=>itemType in r.in)) return false; // wrong item for what's selectable
-    const bufTotal = Object.values(nb.inputBuffer).reduce((a,b)=>a+b,0);
-    if(bufTotal >= nb.maxItems) return false;
+    if((nb.inputBuffer[itemType]||0) >= nb.maxItems) return false;
     nb.inputBuffer[itemType] = (nb.inputBuffer[itemType]||0) + 1;
     return true;
   }
@@ -1108,14 +1185,26 @@ function tryPush(obj){
     if(!nb || nb===obj) continue;
     const fromDir = opp(c.dir);
     if(nb.def.kind==='processor' || nb.def.kind==='combiner' || nb.def.kind==='shaper' || nb.def.kind==='burner' || nb.def.inputPorts || CUSTOM_KINDS[nb.def.kind]){
-      if(pushInto(nb, c.cell, itemType, obj)){ obj.itemQueue.shift(); if(obj.def.kind==='pipe') obj.outRR++; return; }
+      if(pushInto(nb, c.cell, itemType, obj)){ completeTransfer(obj, nb, itemType); return; }
       continue;
     }
     if(acceptsInput(nb, fromDir, itemType, obj)){
-      if(pushInto(nb, c.cell, itemType, obj)){ obj.itemQueue.shift(); if(obj.def.kind==='pipe') obj.outRR++; return; }
+      if(pushInto(nb, c.cell, itemType, obj)){ completeTransfer(obj, nb, itemType); return; }
     }
   }
   if(obj.def.kind==='pipe' && pipeOutputsAbs(obj).length>1) obj.outRR++; // keep alternating even on failed attempts
+}
+// runs on every successful item hand-off: removes it from the source queue, and spawns a
+// short-lived visual particle that slides from source to destination over PIPE_TRANSFER_MS —
+// the actual data model still moves the item instantly (nothing about game logic/timing
+// changes), this only smooths out how it's drawn for that one tick.
+function completeTransfer(obj, nb, itemType){
+  obj.itemQueue.shift();
+  if(obj.def.kind==='pipe') obj.outRR++;
+  const [fx,fy] = centerOf(obj);
+  const [tx,ty] = centerOf(nb);
+  flowParticles.push({fx,fy,tx,ty,itemType, start:performance.now(), duration:PIPE_TRANSFER_MS, to:nb});
+  nb.pendingArrivals = (nb.pendingArrivals||0) + 1;
 }
 
 /* ============================== STARTER GARAGE ============================== */
@@ -1128,12 +1217,36 @@ function ensureStarterGarage(){
 addEventListener('mousemove', e=>{
   mouseScreen.x = e.clientX; mouseScreen.y = e.clientY;
   mouseInWindow = true;
+  if(bpSelecting){
+    const [wx,wy] = screenToWorld(mouseScreen.x, mouseScreen.y);
+    bpSelEnd = worldToCell(wx,wy);
+  }
 });
 addEventListener('mouseleave', ()=> mouseInWindow=false);
+
+canvas.addEventListener('mousedown', e=>{
+  if(tool!=='blueprint' || blueprintClipboard) return;
+  const [wx,wy] = screenToWorld(e.clientX, e.clientY);
+  const cell = worldToCell(wx,wy);
+  bpSelecting = true;
+  bpSelStart = cell;
+  bpSelEnd = cell;
+});
+addEventListener('mouseup', ()=>{
+  if(!bpSelecting) return;
+  bpSelecting = false;
+  finalizeBlueprintSelection();
+});
 
 canvas.addEventListener('click', e=>{
   const [wx,wy] = screenToWorld(e.clientX, e.clientY);
   const [cx,cy] = worldToCell(wx,wy);
+
+  if(tool==='blueprint'){
+    if(bpSuppressNextClick){ bpSuppressNextClick = false; return; }
+    if(blueprintClipboard) pasteBlueprint(blueprintClipboard, cx, cy);
+    return;
+  }
 
   if(tool==='build' && selectedPlaceable){
     const def = PLACEABLES[selectedPlaceable];
@@ -1264,9 +1377,17 @@ addEventListener('keydown', e=>{
   else if(k==='6') toggleIssuesPanel();
   else if(k==='5') setTool('connectors');
   else if(k==='z') setTool('glove');
-  else if(k==='escape'){ setTool('select'); closeRecipeSelect(); }
+  else if(k==='b') setTool('blueprint');
+  else if(k==='escape'){
+    setTool('select');
+    closeRecipeSelect();
+    if(blueprintClipboard || bpSelecting){ blueprintClipboard=null; bpSelecting=false; bpSelStart=null; bpSelEnd=null; }
+  }
   else if(k==='r'){
-    if(tool==='glove' && heldObject){
+    if(tool==='blueprint' && blueprintClipboard){
+      blueprintClipboard = rotateBlueprint(blueprintClipboard);
+      showMsg('Blueprint rotated');
+    } else if(tool==='glove' && heldObject){
       if(heldObject.def.kind==='pipe' || heldObject.def.kind==='drill'){
         heldObject.rotation = (heldObject.rotation+1)%4;
         heldObject.cells = cellsFor(heldObject.type, heldObject.rotation);
@@ -1299,6 +1420,7 @@ addEventListener('blur', ()=>{ keysHeld.w=keysHeld.a=keysHeld.s=keysHeld.d=false
 
 function setTool(t){
   if(heldObject && t!=='glove') cancelHeld();
+  if(t!=='blueprint'){ blueprintClipboard=null; bpSelecting=false; bpSelStart=null; bpSelEnd=null; }
   tool = t;
   document.querySelectorAll('.tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.tool===t));
   document.getElementById('buildPanel').classList.toggle('show', t==='build');
@@ -1970,6 +2092,23 @@ function draw(){
 
   for(const obj of objects){ if(obj!==heldObject) drawObject(obj); }
 
+  // in-flight item particles — see completeTransfer(). Drawn on top of everything else so
+  // the motion reads clearly even over pipes/machines.
+  const nowFlow = performance.now();
+  for(let i=flowParticles.length-1; i>=0; i--){
+    const p = flowParticles[i];
+    const t = Math.min(1, (nowFlow - p.start) / p.duration);
+    if(t>=1){
+      if(p.to) p.to.pendingArrivals = Math.max(0, (p.to.pendingArrivals||0) - 1);
+      flowParticles.splice(i,1);
+      continue;
+    }
+    const wx = p.fx + (p.tx-p.fx)*t;
+    const wy = p.fy + (p.ty-p.fy)*t;
+    const [sx,sy] = worldPointOnScreen(wx,wy);
+    drawItemDot(sx, sy, p.itemType, 4.5);
+  }
+
   if(tool==='wire' && wirePending){
     const [cx,cy] = centerOf(wirePending);
     const [sx,sy] = worldPointOnScreen(cx,cy);
@@ -2038,6 +2177,37 @@ function draw(){
     const cells = heldObject.cells;
     const ok = cells.every(([dx,dy])=>!grid.has(key(cx+dx, cy+dy)));
     drawPlacementGhost(def, cx, cy, cells, heldObject.rotation, heldObject.flipped, heldObject.pipeShape, ok);
+  }
+
+  if(tool==='blueprint' && bpSelecting && bpSelStart && bpSelEnd){
+    const x0 = Math.min(bpSelStart[0], bpSelEnd[0]), x1 = Math.max(bpSelStart[0], bpSelEnd[0]);
+    const y0 = Math.min(bpSelStart[1], bpSelEnd[1]), y1 = Math.max(bpSelStart[1], bpSelEnd[1]);
+    const [sx,sy] = worldPointOnScreen(x0*TILE, y0*TILE);
+    ctx.fillStyle = '#4da3ff22';
+    ctx.fillRect(sx, sy, (x1-x0+1)*TILE, (y1-y0+1)*TILE);
+    ctx.strokeStyle = '#4da3ff'; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
+    ctx.strokeRect(sx, sy, (x1-x0+1)*TILE, (y1-y0+1)*TILE);
+    ctx.setLineDash([]);
+  }
+  if(tool==='blueprint' && blueprintClipboard && mouseInWindow){
+    const [wx,wy] = screenToWorld(mouseScreen.x, mouseScreen.y);
+    const [cx,cy] = worldToCell(wx,wy);
+    const bp = blueprintClipboard;
+    const ok = blueprintFits(bp, cx, cy);
+    ctx.globalAlpha = 0.6;
+    for(const p of bp.pieces){
+      const def = PLACEABLES[p.type];
+      for(const [cdx,cdy] of cellsFor(p.type, p.rotation)){
+        const [tsx,tsy] = worldPointOnScreen((cx+p.dx+cdx)*TILE, (cy+p.dy+cdy)*TILE);
+        ctx.fillStyle = ok ? def.color : '#c0392b';
+        ctx.fillRect(tsx+2, tsy+2, TILE-4, TILE-4);
+      }
+    }
+    ctx.globalAlpha = 1;
+    const [bsx,bsy] = worldPointOnScreen(cx*TILE, cy*TILE - 22);
+    ctx.fillStyle = ok ? '#e8ede8' : '#ff8a7a';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText(`${bp.pieces.length} piece(s) • $${bp.totalCost}`, bsx, bsy);
   }
 }
 
@@ -2142,7 +2312,8 @@ function drawObject(obj){
 
   if(def.kind==='pipe'){
     drawPipeShape(obj, sx, sy);
-    for(let i=0;i<obj.itemQueue.length;i++){
+    const visibleCount = Math.max(0, obj.itemQueue.length - (obj.pendingArrivals||0));
+    for(let i=0;i<visibleCount;i++){
       drawItemDot(sx+TILE*0.22, sy+TILE*0.22 + i*6, obj.itemQueue[i], 4);
     }
   }
@@ -2175,7 +2346,8 @@ function drawObject(obj){
       ctx.strokeStyle = '#ffe58a'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(sx+w/2, sy+h/2, Math.min(w,h)*0.18, -Math.PI/2, -Math.PI/2 + frac*Math.PI*2); ctx.stroke();
     }
-    for(let i=0;i<obj.itemQueue.length;i++){
+    const visibleCount = Math.max(0, obj.itemQueue.length - (obj.pendingArrivals||0));
+    for(let i=0;i<visibleCount;i++){
       drawItemDot(sx+w-14, sy+h-14 - i*8, obj.itemQueue[i], 4.5);
     }
   }
