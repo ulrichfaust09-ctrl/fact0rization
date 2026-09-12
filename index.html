@@ -86,8 +86,13 @@
   .rs-option.sel{border-color:var(--accent);background:#2c3a2c;}
   .rs-option .rs-out{color:var(--accent);font-weight:600;}
 
-  #info{position:fixed;top:12px;right:12px;max-width:260px;text-align:right;pointer-events:none;}
+  #info{max-width:260px;text-align:right;pointer-events:none;}
   #info div{margin-bottom:6px;}
+  #topRight{position:fixed;top:12px;right:12px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+  #pollutionChip{width:220px;text-align:left;pointer-events:none;}
+  #pollutionBarTrack{width:100%;height:8px;background:#00000055;border-radius:5px;margin:6px 0 4px;overflow:hidden;}
+  #pollutionBarFill{height:100%;width:0%;background:#5cc98a;transition:width .3s, background .3s;}
+  #pollutionCount{font-size:11px;color:var(--dim);text-align:right;}
   #msg{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#00000090;color:#fff;padding:6px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;}
   #msg.show{opacity:1;}
 
@@ -149,10 +154,17 @@
       <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move &nbsp;•&nbsp; <kbd>0</kbd> Select &nbsp; <kbd>1</kbd> Build &nbsp; <kbd>2</kbd> Wire &nbsp; <kbd>4</kbd> Recipes &nbsp; <kbd>5</kbd> Connectors &nbsp; <kbd>6</kbd> Issues &nbsp; <kbd>Z</kbd> Glove &nbsp; <kbd>B</kbd> Blueprint &nbsp; <kbd>R</kbd> Rotate &nbsp; <kbd>F</kbd> Flip (also while holding w/ Glove) &nbsp; <kbd>U</kbd> Pipe shape &nbsp; <kbd>Esc</kbd> Cancel
     </div>
   </div>
-  <div class="chip" id="info">
-    <div>Income: <b id="incomeInfo">$0/min</b></div>
-    <div>Power/sec: <b id="powInfo">0 / 0 W</b></div>
-    <div>Iron shipped: <b id="shipInfo">0</b></div>
+  <div id="topRight">
+    <div class="chip" id="info">
+      <div>Income: <b id="incomeInfo">$0/min</b></div>
+      <div>Power/sec: <b id="powInfo">0 / 0 W</b></div>
+      <div>Iron shipped: <b id="shipInfo">0</b></div>
+    </div>
+    <div class="chip" id="pollutionChip">
+      <div style="display:flex;justify-content:space-between;gap:10px;"><span>Pollution</span><b id="pollutionTier">Minimal</b></div>
+      <div id="pollutionBarTrack"><div id="pollutionBarFill"></div></div>
+      <div id="pollutionCount">0 / 1000</div>
+    </div>
   </div>
 </div>
 
@@ -330,6 +342,12 @@ const ITEMS = {
   quantum_logic_processor:{name:'Quantum Logic Processor', price:1400, cat:'solid', color:'#7a3fd9'},
   reinforced_heavy_alloy_frame:{name:'Reinforced Heavy Alloy Frame', price:950, cat:'solid', color:'#4a4f57'},
   industrial_automation_core:{name:'Industrial Automation Core', price:1100, cat:'solid', color:'#c9762f'},
+  uranium:      {name:'Uranium',              price:120, cat:'solid', color:'#8fce4a'},
+  bread:        {name:'Bread',                price:25,  cat:'food',  color:'#c98a3f'},
+  fries:        {name:'Fries',                price:22,  cat:'food',  color:'#e8c24a'},
+  carrot_juice: {name:'Carrot Juice',         price:18,  cat:'food',  color:'#e88a2a'},
+  refined_sugar:{name:'Refined Sugar',        price:20,  cat:'food',  color:'#f2f2ea'},
+  ai_mainframe: {name:'AI Mainframe',         price:3000, cat:'solid', color:'#6a3fd9'},
 };
 
 /* ---- burner fuel table: item -> {watts, ms} ---- */
@@ -337,36 +355,37 @@ const BURNER_FUELS = {
   wood_log: {watts:30, ms:2000},
   charcoal: {watts:60, ms:3000},
   coal:     {watts:75, ms:4000},
+  uranium:  {watts:200, ms:10000},
 };
 
 /* ---- placeable definitions ---- */
 const PLACEABLES = {
   pipe:        {name:'Pipe',          cost:100,  w:1,h:1, kind:'pipe',  category:'solid', color:'#8a8f98'},
   fluid_pipe:  {name:'Fluid Pipe',    cost:120,  w:1,h:1, kind:'pipe',  category:'fluid', color:'#3c6e91'},
-  drill:       {name:'Iron Drill',    cost:1000, w:2,h:1, kind:'drill', color:'#6b6f76', produces:'iron_ore',   prodMs:2000, watts:15, tex:'iron'},
-  coal_drill:  {name:'Coal Drill',    cost:500,  w:2,h:1, kind:'drill', color:'#6b6f76', produces:'coal',       prodMs:750,  watts:15, tex:'coal'},
-  copper_drill:{name:'Copper Drill',  cost:800,  w:2,h:1, kind:'drill', color:'#6b6f76', produces:'copper_ore', prodMs:1500, watts:15, tex:'copper'},
-  water_drill: {name:'Water Drill',   cost:900,  w:2,h:1, kind:'drill', color:'#3c6e91', produces:'water',      prodMs:1250, watts:15, tex:'water'},
-  gold_drill:  {name:'Gold Drill',    cost:2000, w:2,h:1, kind:'drill', color:'#6b6f76', produces:'gold',       prodMs:2000, watts:15, tex:'gold'},
+  drill:       {name:'Iron Drill',    cost:1000, w:2,h:1, kind:'drill', color:'#6b6f76', produces:'iron_ore',   prodMs:2000, watts:15, tex:'iron', pollutes:true},
+  coal_drill:  {name:'Coal Drill',    cost:500,  w:2,h:1, kind:'drill', color:'#6b6f76', produces:'coal',       prodMs:750,  watts:15, tex:'coal', pollutes:true},
+  copper_drill:{name:'Copper Drill',  cost:800,  w:2,h:1, kind:'drill', color:'#6b6f76', produces:'copper_ore', prodMs:1500, watts:15, tex:'copper', pollutes:true},
+  water_drill: {name:'Water Drill',   cost:900,  w:2,h:1, kind:'drill', color:'#3c6e91', produces:'water',      prodMs:1250, watts:15, tex:'water', pollutes:true},
+  gold_drill:  {name:'Gold Drill',    cost:2000, w:2,h:1, kind:'drill', color:'#6b6f76', produces:'gold',       prodMs:2000, watts:15, tex:'gold', pollutes:true},
   solar:       {name:'Solar Panel',   cost:150,  w:1,h:1, kind:'solar', color:'#1c2b52'},
   garage:      {name:'Garage',        cost:1000, w:2,h:2, kind:'garage',color:'#5a4a30'},
-  furnace:     {name:'Furnace',       cost:1250, w:2,h:2, kind:'processor', color:'#7a3b28', watts:20, minWatts:15, batchMs:2000,
+  furnace:     {name:'Furnace',       cost:1250, w:2,h:2, kind:'processor', color:'#7a3b28', watts:20, minWatts:15, batchMs:2000, pollutes:true,
                  inCat:'solid', outCat:'fluid',
                  recipes:[{in:{iron_ore:1}, out:{liquid_iron:1}},{in:{copper_ore:1}, out:{liquid_copper:1}},
                           {in:{gold:1}, out:{liquid_gold:1}},
                           {in:{wood_log:1}, out:{charcoal:1}, batchMs:1500}]},
   tree_farm:   {name:'Tree Farm',     cost:400,  w:2,h:2, kind:'farm', color:'#2f6e2f', watts:5, prodMs:3000, produces:'wood_log'},
   storage:     {name:'Storage',       cost:300,  w:2,h:2, kind:'storage', color:'#6a5a3a', capacity:15},
-  molder:      {name:'Ingot Molder',  cost:1500, w:2,h:2, kind:'processor', color:'#555a63', watts:25, batchMs:1500,
+  molder:      {name:'Ingot Molder',  cost:1500, w:2,h:2, kind:'processor', color:'#555a63', watts:25, batchMs:1500, pollutes:true,
                  inCat:'fluid', outCat:'solid',
                  recipes:[{in:{liquid_iron:1}, out:{iron_ingot:1}},{in:{liquid_copper:1}, out:{copper_ingot:1}},
                           {in:{liquid_gold:1}, out:{gold_ingot:1}},
                           {in:{liquid_cu_fe_alloy:1}, out:{cu_fe_ingot:1}},{in:{liquid_steel:1}, out:{steel_ingot:1}}]},
-  compressor:  {name:'Compressor',    cost:1750, w:2,h:2, kind:'processor', color:'#40474f', watts:30, batchMs:2000,
+  compressor:  {name:'Compressor',    cost:1750, w:2,h:2, kind:'processor', color:'#40474f', watts:30, batchMs:2000, pollutes:true,
                  inCat:'solid', outCat:'solid',
                  recipes:[{in:{copper_ingot:1}, out:{copper_plate:1}},{in:{iron_ingot:1}, out:{iron_plate:1}},{in:{coal:2}, out:{carbon_block:1}}]},
-  burner:      {name:'Burner',        cost:800,  w:2,h:2, kind:'burner', color:'#3a2a1c', watts:0},
-  combiner:    {name:'Combiner',      cost:2000, w:3,h:1, kind:'combiner', color:'#4a4a52', watts:30, batchMs:1500,
+  burner:      {name:'Burner',        cost:800,  w:2,h:2, kind:'burner', color:'#3a2a1c', watts:0, pollutes:true},
+  combiner:    {name:'Combiner',      cost:2000, w:3,h:1, kind:'combiner', color:'#4a4a52', watts:30, batchMs:1500, pollutes:true,
                  manualRecipe:true, inputPorts:[[0,0],[1,0]], outputPorts:[[2,0]],
                  recipes:[
                    {in:{copper_ingot:2, iron_ingot:1}, out:{cu_fe_alloy:1}},
@@ -376,7 +395,7 @@ const PLACEABLES = {
                    {in:{coal:4},                        out:{coal_block:1}},
                    {in:{cu_fe_alloy:1, copper_coils:2}, out:{electromagnet:1}},
                  ]},
-  shaper:      {name:'Shaper',        cost:2500, w:2,h:3, kind:'shaper', color:'#5a5f68', watts:35, batchMs:2000,
+  shaper:      {name:'Shaper',        cost:2500, w:2,h:3, kind:'shaper', color:'#5a5f68', watts:35, batchMs:2000, pollutes:true,
                  manualRecipe:true, inputPorts:[[0,0],[1,0]], outputPorts:[[0,2],[1,2]],
                  recipes:[
                    {in:{iron_ingot:1},   out:{iron_nails:5}},
@@ -385,17 +404,17 @@ const PLACEABLES = {
                    {in:{copper_ingot:1}, out:{copper_coils:2}},
                    {in:{iron_ingot:1},   out:{heavy_bolts:3}},
                  ]},
-  foundry:     {name:'Foundry',       cost:3000, w:3,h:2, kind:'multiport', color:'#5c3a2e', watts:45, batchMs:2500,
+  foundry:     {name:'Foundry',       cost:3000, w:3,h:2, kind:'multiport', color:'#5c3a2e', watts:45, batchMs:2500, pollutes:true,
                  manualRecipe:true, inputPorts:[[0,0],[0,1]], outputPorts:[[2,0],[2,1]],
                  recipes:[
                    {in:{copper_ore:2, iron_ore:1}, out:{liquid_cu_fe_alloy:1}},
                    {in:{copper_ore:1, iron_ore:1}, out:{liquid_bronze:1}},
                    {in:{coal:2, iron_ore:1},        out:{liquid_steel:1}},
                  ]},
-  laminator:   {name:'Laminator',     cost:3000, w:4,h:1, kind:'multiport', color:'#2e5d34', watts:35, batchMs:2000,
+  laminator:   {name:'Laminator',     cost:3000, w:4,h:1, kind:'multiport', color:'#2e5d34', watts:35, batchMs:2000, pollutes:true,
                  manualRecipe:false, inputPorts:[[0,0],[1,0],[2,0]], outputPorts:[[3,0]],
                  recipes:[{in:{circuit_board:1, water:1, liquid_copper:1}, out:{fiberglass_pcb:1}}]},
-  core_combiner:{name:'Core Combiner', cost:5000, w:4,h:3, kind:'multiport', color:'#3a3a45', watts:120, batchMs:3000,
+  core_combiner:{name:'Core Combiner', cost:5000, w:4,h:3, kind:'multiport', color:'#3a3a45', watts:120, batchMs:3000, pollutes:true,
                  manualRecipe:true, inputPorts:[[0,0],[0,1],[0,2]], outputPorts:[[3,1]],
                  recipes:[
                    {in:{silicon_microchip:1, cu_fe_ingot:1, copper_coils:2}, out:{quantum_logic_processor:1}},
@@ -403,8 +422,26 @@ const PLACEABLES = {
                    {in:{fiberglass_pcb:1, heavy_bolts:2, steel_ingot:1},     out:{industrial_automation_core:1}},
                    {in:{fiberglass_pcb:1, iron_coils:2, carbon_block:1},     out:{silicon_microchip:1}},
                  ]},
+  uranium_drill:{name:'Uranium Drill',cost:2500, w:2,h:1, kind:'drill', color:'#5a6b4a', produces:'uranium', prodMs:3000, watts:15, tex:'uranium', pollutes:true},
+  bakery:      {name:'Bakery',        cost:2000, w:2,h:2, kind:'processor', color:'#8a5a2f', watts:20, batchMs:3000,
+                 inCat:'food', outCat:'food',
+                 recipes:[
+                   {in:{wheat_washed:1},     out:{bread:1}},
+                   {in:{potato_washed:1},    out:{fries:1}},
+                   {in:{carrot_washed:1},    out:{carrot_juice:1}},
+                   {in:{sugarcane_washed:1}, out:{refined_sugar:1}},
+                 ]},
+  assembly_line:{name:'Assembly Line', cost:8000, w:4,h:3, kind:'multiport', color:'#2a2a33', watts:150, batchMs:5000, pollutes:true,
+                 manualRecipe:false, inputPorts:[[0,0],[0,1],[0,2]], outputPorts:[[3,1]],
+                 recipes:[
+                   {in:{quantum_logic_processor:1, industrial_automation_core:1, reinforced_heavy_alloy_frame:1}, out:{ai_mainframe:1}},
+                 ]},
+  scrubber:    {name:'Scrubber',      cost:5000, w:2,h:2, kind:'scrubber', color:'#3a5a4a', watts:30, inCat:'fluid',
+                 cycleMs:5000, waterPerCycle:3, smokeRemoved:40},
+  air_filtrator:{name:'Air Filtrator',cost:15000,w:5,h:7, kind:'air_filtrator', color:'#3f4a56', watts:150,
+                 smokePerSec:15},
 };
-const BUILD_ORDER = ['pipe','fluid_pipe','drill','coal_drill','copper_drill','water_drill','gold_drill','solar','tree_farm','storage','burner','furnace','molder','compressor','combiner','shaper','foundry','laminator','core_combiner','garage'];
+const BUILD_ORDER = ['pipe','fluid_pipe','drill','coal_drill','copper_drill','water_drill','gold_drill','uranium_drill','solar','tree_farm','storage','burner','furnace','molder','compressor','combiner','shaper','foundry','laminator','bakery','core_combiner','assembly_line','scrubber','air_filtrator','garage'];
 
 const PIPE_SHAPES = ['straight','curve','t1','cross1','t2'];
 // local direction ids: 0 right, 1 down, 2 left, 3 up. 'out' rotates with obj.rotation.
@@ -431,6 +468,69 @@ let money = 1250;
 let totalShipped = 0;
 let totalEarned = 0; // cumulative $ earned via garage sales, used for the income/min readout
 let garagesPlaced = 0;
+
+/* ============================== POLLUTION ============================== */
+let pollution = 0;              // 0-1000
+let everReachedHighlyUnstable = false; // once true, pollution can never drop below the Unstable floor (750) again
+let lastDissipation = 0;        // passive dissipation runs on a 10s timer
+let pollutionGraceUntil = 0;    // pollution cannot increase for 10s after entering a game
+
+function addPollution(amount){
+  pollution = Math.min(1000, pollution + amount);
+  if(pollution >= 950) everReachedHighlyUnstable = true;
+}
+function reducePollution(amount){
+  const floor = everReachedHighlyUnstable ? 750 : 0;
+  pollution = Math.max(floor, pollution - amount);
+}
+// Returns the current tier's debuffs. growthMult scales crop/tree growing TIME (so >1 = slower),
+// powerMult scales how much wattage every powered machine needs to draw (>1 = harder to keep
+// powered), poisonChance overrides the Farm Plot's base contamination odds, processingMult is
+// the flat +66% "Machinery Processing Time" penalty that only kicks in at Highly Unstable.
+function getPollutionEffects(){
+  const p = pollution;
+  if(p>=950){
+    const t = (p-950)/50;
+    return {
+      growthMult: 1 + (0.50 + t*(1.75-0.50)),
+      powerMult:  1 + (0.40 + t*(1.25-0.40)),
+      poisonChance: 0.90,
+      processingMult: 1.66,
+      tier:'Highly Unstable', color:'#ff2d2d',
+    };
+  }
+  if(p>=750){
+    const t = (p-750)/199;
+    return {
+      growthMult: 1 + (0.24 + t*(0.50-0.24)),
+      powerMult:  1 + (0.20 + t*(0.40-0.20)),
+      poisonChance: 0.33,
+      processingMult: 1,
+      tier:'Unstable', color:'#ff6a2d',
+    };
+  }
+  if(p>=500){
+    const t = (p-500)/249;
+    return {
+      growthMult: 1 + (0.075 + t*(0.24-0.075)),
+      powerMult:  1 + (0.09 + t*(0.20-0.09)),
+      poisonChance: 0.16,
+      processingMult: 1,
+      tier:'High', color:'#ffb02d',
+    };
+  }
+  if(p>=300){
+    const t = (p-300)/199;
+    return {
+      growthMult: 1 + t*0.075,
+      powerMult:  1 + t*0.09,
+      poisonChance: null, // null = don't override the base chance
+      processingMult: 1,
+      tier:'Moderate', color:'#ffe14d',
+    };
+  }
+  return {growthMult:1, powerMult:1, poisonChance:null, processingMult:1, tier:'Minimal', color:'#5cc98a'};
+}
 
 const grid = new Map();
 const objects = new Set();
@@ -662,6 +762,7 @@ function serializeGame(){
       inputBuffer: Object.assign({}, obj.inputBuffer),
       outRR: obj.outRR,
       selectedRecipe: obj.selectedRecipe,
+      selectedCrop: obj.selectedCrop || null,
       active: obj.active,
       storedWatts: obj.storedWatts,
       forceLock: obj.forceLock,
@@ -672,6 +773,7 @@ function serializeGame(){
   return {
     version: 1,
     money, totalShipped, totalEarned, garagesPlaced,
+    pollution, everReachedHighlyUnstable,
     cam: {x:cam.x, y:cam.y},
     discoveredItems: Array.from(discoveredItems),
     objects: objList,
@@ -695,6 +797,8 @@ function loadGame(data){
   totalShipped = data.totalShipped || 0;
   totalEarned = data.totalEarned || 0;
   garagesPlaced = data.garagesPlaced || 0;
+  pollution = data.pollution || 0;
+  everReachedHighlyUnstable = !!data.everReachedHighlyUnstable;
   cam.x = (data.cam && data.cam.x) || 0;
   cam.y = (data.cam && data.cam.y) || 0;
   (data.discoveredItems||[]).forEach(k=>discoveredItems.add(k));
@@ -707,6 +811,7 @@ function loadGame(data){
     obj.inputBuffer = Object.assign({}, o.inputBuffer||{});
     obj.outRR = o.outRR||0;
     obj.selectedRecipe = (o.selectedRecipe!=null) ? o.selectedRecipe : null;
+    if(o.selectedCrop) obj.selectedCrop = o.selectedCrop;
     if(o.active!=null) obj.active = o.active;
     obj.storedWatts = o.storedWatts||0;
     obj.forceLock = !!o.forceLock;
@@ -836,6 +941,7 @@ function startFreshGame(){
   grid.clear(); objects.clear(); wires.length = 0; discoveredItems.clear();
   wirePending = null; connSelected = null; heldObject = null;
   money = 1250; totalShipped = 0; totalEarned = 0; garagesPlaced = 0;
+  pollution = 0; everReachedHighlyUnstable = false; lastDissipation = 0;
   cam.x = 0; cam.y = 0;
   incomeHistory = []; lastIncomeSample = 0;
   ensureStarterGarage();
@@ -843,6 +949,7 @@ function startFreshGame(){
 function enterGame(name){
   document.getElementById('slotMenu').classList.remove('show');
   gameStarted = true;
+  pollutionGraceUntil = performance.now() + 10000; // pollution is frozen for 10s after logging in
   setTool('select');
   showMsg(`Playing: ${name}`);
 }
@@ -1695,25 +1802,60 @@ function drawSwatchIcon(g, k, def){
 // wattage a single power *source* (solar or burner) currently offers to each wire coming from it
 function sourceCurrentWatts(obj){
   if(!obj) return 0;
-  if(obj.def.kind==='solar') return SOLAR_WATTS;
-  if(obj.def.kind==='burner') return obj.storedWatts || 0;
-  return 0;
+  let total;
+  if(obj.def.kind==='solar') total = SOLAR_WATTS;
+  else if(obj.def.kind==='burner') total = obj.storedWatts || 0;
+  else return 0;
+  // a source's output is shared across every machine it's wired to — one panel/burner can't
+  // magically power an unlimited number of machines at full wattage each
+  const linkedCount = wires.filter(w=>w.from===obj).length;
+  return linkedCount>1 ? total/linkedCount : total;
 }
 function computeSupplied(obj){
   return wires.filter(w=>w.to===obj).reduce((sum,w)=>sum+sourceCurrentWatts(w.from), 0);
 }
 
 function simulate(now){
-  // power pass (consumers) — anything with a recipe list, plus drills & farms, draws power
+  const pollutionFx = getPollutionEffects();
+
+  // power pass (consumers) — anything with a recipe list, plus drills & farms, draws power.
+  // Pollution's powerMult raises how much wattage everything needs, so a polluted grid gets
+  // harder to keep fully powered even with the same supply.
   for(const obj of objects){
     const k = obj.def.kind;
     if(k==='drill' || k==='farm' || obj.def.recipes || (CUSTOM_KINDS[k] && obj.def.watts)){
       obj.suppliedWatts = computeSupplied(obj);
+      const powerMult = k==='air_filtrator' ? 1 : pollutionFx.powerMult;
       if(obj.def.minWatts){
-        obj.powered = obj.suppliedWatts >= obj.def.minWatts;
+        obj.powered = obj.suppliedWatts >= obj.def.minWatts*powerMult;
       } else {
-        obj.powered = obj.suppliedWatts >= obj.def.watts;
+        obj.powered = obj.suppliedWatts >= obj.def.watts*powerMult;
       }
+    }
+  }
+
+  // smoke generation: every polluting machine adds 5 smoke per 5s of continuous (powered) use.
+  // Frozen for 10s after logging in (pollutionGraceUntil) — timers just keep resetting so
+  // nothing bursts out the moment the grace period ends.
+  const inPollutionGrace = now < pollutionGraceUntil;
+  let smokeDue = 0;
+  for(const obj of objects){
+    if(!obj.def.pollutes) continue;
+    if(obj.lastSmokeAt==null || inPollutionGrace) obj.lastSmokeAt = now;
+    if(!obj.powered){ obj.lastSmokeAt = now; continue; } // resets while idle — only counts continuous use
+    if(now - obj.lastSmokeAt >= 5000){
+      smokeDue++;
+      obj.lastSmokeAt = now;
+    }
+  }
+  addPollution(Math.min(smokeDue * 5, 100));
+  // passive dissipation: every 10s, minus 100/75/50 smoke depending on tier — disabled entirely
+  // at Unstable (750+) and above, and can never push pollution below 750 once it's ever hit 950.
+  if(now - lastDissipation >= 10000){
+    lastDissipation = now;
+    if(pollution < 750){
+      const amount = pollution < 300 ? 100 : (pollution < 500 ? 75 : 50);
+      reducePollution(amount);
     }
   }
 
@@ -1741,12 +1883,15 @@ function simulate(now){
     }
   }
 
-  // drill / tree farm production (both just auto-produce an item on a timer while powered)
+  // drill / tree farm production (both just auto-produce an item on a timer while powered).
+  // Tree Farm's cycle time is stretched by pollution's growthMult (crop/tree growing time);
+  // polluting drills instead get the flat processingMult penalty (Highly Unstable only).
   for(const obj of objects){
     if(obj.def.kind!=='drill' && obj.def.kind!=='farm') continue;
     if(!obj.powered) continue;
     if(obj.itemQueue.length >= obj.maxItems) continue;
-    if(now - obj.lastProd >= obj.def.prodMs){
+    const mult = obj.def.kind==='farm' ? pollutionFx.growthMult : (obj.def.pollutes ? pollutionFx.processingMult : 1);
+    if(now - obj.lastProd >= obj.def.prodMs*mult){
       obj.itemQueue.push(obj.def.produces);
       obj.lastProd = now;
       discoverItem(obj.def.produces);
@@ -1755,7 +1900,8 @@ function simulate(now){
 
   // any recipe-based machine's production: auto-picks the first satisfiable recipe unless
   // manualRecipe is set (combiner, shaper, foundry, core combiner), in which case only the
-  // recipe chosen via the select UI ever runs.
+  // recipe chosen via the select UI ever runs. Pollution's processingMult (Highly Unstable
+  // only) slows every polluting machine's batch time by +66%.
   for(const obj of objects){
     if(!obj.def.recipes) continue;
     if(obj.processingDoneAt!==null){
@@ -1777,10 +1923,11 @@ function simulate(now){
     for(const it in recipe.in) obj.inputBuffer[it] -= recipe.in[it];
     let speed = 1;
     if(obj.def.minWatts){
-      speed = obj.suppliedWatts >= obj.def.watts ? 1 : 0.75;
+      speed = obj.suppliedWatts >= obj.def.watts*pollutionFx.powerMult ? 1 : 0.75;
     }
+    const pollutionSlow = obj.def.pollutes ? pollutionFx.processingMult : 1;
     obj.processingRecipe = recipe;
-    obj.processingDoneAt = now + (recipe.batchMs || obj.def.batchMs) / speed;
+    obj.processingDoneAt = now + (recipe.batchMs || obj.def.batchMs) * pollutionSlow / speed;
   }
 
   // custom kinds (registered via window.GameAPI.registerCustomKind — see the Agriculture section)
@@ -1798,6 +1945,84 @@ function simulate(now){
     obj.lastTransfer = now;
     tryPush(obj);
   }
+}
+
+/* ============================== POLLUTION MACHINES ============================== */
+CUSTOM_KINDS.scrubber = {
+  maxItems: ()=>0,
+  acceptsItem: (nb, itemType, cat) => cat==='fluid' && itemType==='water',
+  tick(obj, now){
+    if(obj.lastScrub==null) obj.lastScrub = now;
+    if(!obj.powered) return;
+    if(now - obj.lastScrub < obj.def.cycleMs) return;
+    const have = obj.inputBuffer.water || 0;
+    if(have < obj.def.waterPerCycle) return;
+    obj.inputBuffer.water -= obj.def.waterPerCycle;
+    obj.lastScrub = now;
+    obj.scrubbedTotal = (obj.scrubbedTotal||0) + obj.def.smokeRemoved;
+    reducePollution(obj.def.smokeRemoved);
+  },
+  drawIcon(ctx,x,y,w,h,obj){ drawScrubber(ctx,x,y,w,h,obj.powered); },
+  drawSwatch(ctx,x,y,w,h,def){ drawScrubber(ctx,x,y,w,h,true); },
+  tooltip(obj,def){
+    return `<div class="t-title">Scrubber</div>
+      <div class="t-row"><span>Power</span><b style="color:${obj.powered?'#5cc98a':'#e06a5a'}">${obj.powered?'Powered':'No power'}</b></div>
+      <div class="t-row"><span>Water banked</span><b>${obj.inputBuffer.water||0}/${obj.def.waterPerCycle}</b></div>
+      <div class="t-row"><span>Total scrubbed</span><b>${obj.scrubbedTotal||0} smoke</b></div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Uses 3 water every 5s to remove 40 pollution.</div>`;
+  },
+};
+CUSTOM_KINDS.air_filtrator = {
+  maxItems: ()=>0,
+  tick(obj, now){
+    if(!obj.powered) return;
+    if(obj.lastFilter==null) obj.lastFilter = now;
+    const dt = now - obj.lastFilter;
+    if(dt < 1000) return;
+    const secs = Math.floor(dt/1000);
+    reducePollution(obj.def.smokePerSec*secs);
+    obj.lastFilter += secs*1000;
+  },
+  drawIcon(ctx,x,y,w,h,obj){ drawAirFiltrator(ctx,x,y,w,h,obj.powered); },
+  drawSwatch(ctx,x,y,w,h,def){ drawAirFiltrator(ctx,x,y,w,h,true); },
+  tooltip(obj,def){
+    return `<div class="t-title">Air Filtrator</div>
+      <div class="t-row"><span>Power</span><b style="color:${obj.powered?'#5cc98a':'#e06a5a'}">${obj.powered?'Powered':'No power'}</b></div>
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Removes 15 pollution/sec continuously while powered.</div>`;
+  },
+};
+function drawScrubber(ctx,x,y,w,h,powered){
+  ctx.fillStyle = '#2a4a3a';
+  roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.1); ctx.fill();
+  ctx.strokeStyle = powered ? '#8fe0c0' : '#00000066'; ctx.lineWidth = 2;
+  roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.1); ctx.stroke();
+  const cx=x+w*0.5, cy=y+h*0.55, r=Math.min(w,h)*0.22;
+  ctx.strokeStyle = '#bff0d0'; ctx.lineWidth = Math.max(1.5, w*0.015);
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.stroke();
+  ctx.strokeStyle = '#6fe0a0'; ctx.lineWidth = Math.max(1.5, w*0.02);
+  for(const dx of [-0.12,0,0.12]){
+    ctx.beginPath();
+    ctx.moveTo(cx+w*dx, cy+r*0.3); ctx.lineTo(cx+w*dx, cy-r*0.5);
+    ctx.moveTo(cx+w*dx-4, cy-r*0.5+5); ctx.lineTo(cx+w*dx, cy-r*0.5); ctx.lineTo(cx+w*dx+4, cy-r*0.5+5);
+    ctx.stroke();
+  }
+  ctx.fillStyle = INPUT_COLOR;
+  ctx.beginPath(); ctx.arc(x+w*0.14, y+h*0.16, Math.min(w,h)*0.06, 0, 7); ctx.fill();
+}
+function drawAirFiltrator(ctx,x,y,w,h,powered){
+  ctx.fillStyle = '#28323c';
+  roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.05); ctx.fill();
+  ctx.strokeStyle = powered ? '#8fc0ff' : '#00000066'; ctx.lineWidth = 3;
+  roundRectOn(ctx,x,y,w,h,Math.min(w,h)*0.05); ctx.stroke();
+  const cx=x+w*0.5, cy=y+h*0.5, r=Math.min(w,h)*0.32;
+  ctx.strokeStyle = '#9fd0ff'; ctx.lineWidth = Math.max(1.5, Math.min(w,h)*0.02);
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.stroke();
+  for(let i=0;i<8;i++){
+    const a = i/8*Math.PI*2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r); ctx.stroke();
+  }
+  ctx.fillStyle = powered ? '#8fe0ff' : '#556577';
+  ctx.beginPath(); ctx.arc(cx,cy,r*0.18,0,7); ctx.fill();
 }
 
 /* ============================== ICONS ============================== */
@@ -1826,7 +2051,7 @@ function iconDrillTex(g, x, y, w, h, tex){
   roundRectOn(g, x, y, w, h, Math.min(w,h)*0.12); g.stroke();
   g.save();
   g.beginPath(); roundRectOn(g, x, y, w, h, Math.min(w,h)*0.12); g.clip();
-  const chunkColor = tex==='coal' ? '#161616' : tex==='copper' ? '#d9752e' : tex==='water' ? '#4fa3d9' : tex==='gold' ? '#e6c235' : '#4a4d53';
+  const chunkColor = tex==='coal' ? '#161616' : tex==='copper' ? '#d9752e' : tex==='water' ? '#4fa3d9' : tex==='gold' ? '#e6c235' : tex==='uranium' ? '#8fce4a' : '#4a4d53';
   g.fillStyle = chunkColor;
   const n = Math.max(3, Math.round(w/14));
   for(let i=0;i<n;i++){
@@ -2394,10 +2619,16 @@ function loop(now){
 
   document.getElementById('money').textContent = fmtMoney(money);
   document.getElementById('shipInfo').textContent = totalShipped;
+  const pollFx = getPollutionEffects();
   let usedW=0, capW=0;
   for(const o of objects){
     const k = o.def.kind;
-    if(k==='drill'||k==='farm'||o.def.recipes){ capW += o.def.watts; if(o.powered) usedW += (o.def.minWatts ? (o.suppliedWatts>=o.def.watts?o.def.watts:o.def.minWatts) : o.def.watts); }
+    if(k==='drill'||k==='farm'||o.def.recipes||(CUSTOM_KINDS[k]&&o.def.watts)){
+      const powerMult = k==='air_filtrator' ? 1 : pollFx.powerMult;
+      const need = (o.def.minWatts||o.def.watts)*powerMult;
+      capW += Math.round(o.def.watts*powerMult);
+      if(o.powered) usedW += Math.round(need);
+    }
   }
   document.getElementById('powInfo').textContent = `${usedW} / ${capW} W`;
 
@@ -2412,6 +2643,15 @@ function loop(now){
     const rate = minutes > 0 ? Math.round((latest.total - oldest.total) / minutes) : 0;
     document.getElementById('incomeInfo').textContent = `$${rate}/min`;
   }
+
+  document.getElementById('pollutionTier').textContent = pollFx.tier;
+  document.getElementById('pollutionTier').style.color = pollFx.color;
+  document.getElementById('pollutionBarFill').style.width = (pollution/1000*100)+'%';
+  document.getElementById('pollutionBarFill').style.background = pollFx.color;
+  const graceLeft = Math.max(0, pollutionGraceUntil - now);
+  document.getElementById('pollutionCount').textContent = graceLeft>0
+    ? `${Math.round(pollution)} / 1000 • increase blocked ${(graceLeft/1000).toFixed(1)}s`
+    : `${Math.round(pollution)} / 1000`;
 
   if(now - lastIssuesCheck > 500){
     lastIssuesCheck = now;
@@ -2479,9 +2719,11 @@ function updateTooltip(){
       <div class="t-row"><span>Output →</span><b style="text-align:right">${describeCandidate(obj)}</b></div>`;
   } else if(def.kind==='solar'){
     const links = wires.filter(w=>w.from===obj);
+    const perMachine = links.length>1 ? SOLAR_WATTS/links.length : SOLAR_WATTS;
     html = `<div class="t-title">Solar Panel</div>
-      <div class="t-row"><span>Output</span><b>${SOLAR_WATTS} W</b></div>
-      <div class="t-row"><span>Wired to</span><b>${links.length} machine${links.length===1?'':'s'}</b></div>`;
+      <div class="t-row"><span>Total output</span><b>${SOLAR_WATTS} W</b></div>
+      <div class="t-row"><span>Wired to</span><b>${links.length} machine${links.length===1?'':'s'}</b></div>
+      ${links.length>1 ? `<div class="t-row"><span>Per machine</span><b>${perMachine.toFixed(1)} W (split ${links.length} ways)</b></div>` : ''}`;
   } else if(def.kind==='garage'){
     html = `<div class="t-title">Garage</div>
       <div class="t-row"><span>Total shipped</span><b>${totalShipped}</b></div>
@@ -2538,14 +2780,17 @@ function updateTooltip(){
   } else if(def.kind==='burner'){
     const burning = obj.burnEndAt!==null;
     const secLeft = burning ? Math.max(0,((obj.burnEndAt-performance.now())/1000)).toFixed(1) : '0.0';
+    const burnerLinks = wires.filter(w=>w.from===obj);
+    const perMachineB = burnerLinks.length>1 ? obj.storedWatts/burnerLinks.length : obj.storedWatts;
     html = `<div class="t-title">${def.name}</div>
       <div class="t-row"><span>Status</span><b style="color:${burning?'#5cc98a':'#9fb0a4'}">${burning?'Burning':'Idle'}</b></div>
-      <div class="t-row"><span>Output</span><b>${obj.storedWatts} W</b></div>
+      <div class="t-row"><span>Total output</span><b>${obj.storedWatts} W</b></div>
       ${burning?`<div class="t-row"><span>Fuel left</span><b>${secLeft}s</b></div>`:''}
       <div class="t-row"><span>Fuel queue</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
       <div style="margin-top:4px">${itemListHtml(obj.itemQueue.reduce((m,it)=>{m[it]=(m[it]||0)+1;return m;},{}))}</div>
-      <div style="margin-top:5px;color:var(--dim);font-size:11px">Fuels: Wood Log (30W/2s), Charcoal (60W/3s), Coal (75W/4s)</div>
-      <div class="t-row" style="margin-top:4px"><span>Wired to</span><b>${wires.filter(w=>w.from===obj).length} machine(s)</b></div>`;
+      <div style="margin-top:5px;color:var(--dim);font-size:11px">Fuels: Wood Log (30W/2s), Charcoal (60W/3s), Coal (75W/4s), Uranium (200W/10s)</div>
+      <div class="t-row" style="margin-top:4px"><span>Wired to</span><b>${burnerLinks.length} machine${burnerLinks.length===1?'':'s'}</b></div>
+      ${burnerLinks.length>1 ? `<div class="t-row"><span>Per machine</span><b>${perMachineB.toFixed(1)} W (split ${burnerLinks.length} ways)</b></div>` : ''}`;
   } else if(CUSTOM_KINDS[def.kind] && CUSTOM_KINDS[def.kind].tooltip){
     html = CUSTOM_KINDS[def.kind].tooltip(obj, def) || `<div class="t-title">${def.name}</div>`;
   }
@@ -2570,6 +2815,7 @@ window.GameAPI = {
   objects, grid, wires,
   key, cellsFor, placeObject, discoverItem, showMsg, fmtMoney,
   cornerOutputCandidates, processorInCell, roundRectOn, itemListHtml, itemIconHtml,
+  getPollutionEffects, addPollution, reducePollution,
   addPlaceable(typeKey, def){
     PLACEABLES[typeKey] = def;
     const gi = BUILD_ORDER.indexOf('garage');
@@ -2643,7 +2889,7 @@ showAuthPanel();
   });
   GameAPI.addPlaceable('filterer', {
     name:'Filterer', cost:1000, w:4, h:4, kind:'filterer', color:'#4a5a68',
-    watts:25, inCat:'food', scanMs:400, destroyChance:0.90,
+    watts:25, inCat:'food', scanMs:400, destroyChance:1.0,
   });
   GameAPI.addPlaceable('washer', {
     name:'Washer', cost:1200, w:2, h:3, kind:'washer', color:'#2e6e91',
@@ -2696,14 +2942,16 @@ showAuthPanel();
     tick(obj, now){
       if(obj.lastCropProd==null) obj.lastCropProd = now + Math.random()*400;
       if(!obj.selectedCrop || !obj.powered) return;
-      if(now - obj.lastCropProd < obj.def.prodMs) return;
+      const fx = GameAPI.getPollutionEffects();
+      if(now - obj.lastCropProd < obj.def.prodMs*fx.growthMult) return; // pollution stretches the growing time
       const waterHave = obj.inputBuffer.water || 0;
       if(waterHave < obj.def.waterPerCycle) return;          // not enough water banked yet
       if(obj.itemQueue.length + obj.def.unitsPerCycle > obj.maxItems) return; // wait for room downstream
       obj.inputBuffer.water -= obj.def.waterPerCycle;
       obj.lastCropProd = now;
+      const poisonChance = fx.poisonChance!=null ? fx.poisonChance : obj.def.poisonChance; // pollution can override the base 12%
       for(let i=0; i<obj.def.unitsPerCycle; i++){
-        const poisoned = Math.random() < obj.def.poisonChance;
+        const poisoned = Math.random() < poisonChance;
         const itemType = obj.selectedCrop + (poisoned ? '_poisoned' : '');
         obj.itemQueue.push(itemType);
         GameAPI.discoverItem(itemType);
@@ -2742,7 +2990,7 @@ showAuthPanel();
         if(Math.random() < obj.def.destroyChance){
           obj.destroyedCount = (obj.destroyedCount||0) + 1; // caught and destroyed
         } else {
-          obj.itemQueue.push(k); // the 10% that slips through
+          obj.itemQueue.push(k); // whatever fraction still slips through, if destroyChance<1
         }
       } else {
         obj.itemQueue.push(k); // clean crops always pass
@@ -2755,7 +3003,7 @@ showAuthPanel();
         <div class="t-row"><span>Power</span><b style="color:${obj.powered?'#5cc98a':'#e06a5a'}">${obj.powered?'Powered':'No power'}</b></div>
         <div class="t-row"><span>Destroyed</span><b>${obj.destroyedCount||0}</b></div>
         <div class="t-row"><span>Buffer</span><b>${obj.itemQueue.length}/${obj.maxItems}</b></div>
-        <div style="margin-top:5px;color:var(--dim);font-size:11px">Destroys 90% of poisoned crops that pass through — 10% slip through undetected.</div>`;
+        <div style="margin-top:5px;color:var(--dim);font-size:11px">Removes every poisoned crop that passes through — clean crops pass unaffected.</div>`;
     },
   });
 
